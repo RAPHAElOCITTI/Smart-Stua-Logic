@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "Smart-Stua",
+    "slug": "smart-stua",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0A0F1E",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0F1E"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.smartstua.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0A0F1E"
+      },
+      "package": "com.smartstua.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "description": "IoT-based aflatoxin prevention monitoring system for grain storage",
+    "plugins": [
+      "expo-secure-store"
+    ]
+  }
+}
