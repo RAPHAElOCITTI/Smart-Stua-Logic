@@ -5,6 +5,7 @@ Smart-Stua Django Settings
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+import dj_database_url
 
 # ─── Paths ───────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -63,12 +64,15 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'smartstua.wsgi.application'
 
-# ─── Database (SQLite) ───────────────────────────────────────────────────────
+# ─── Database ────────────────────────────────────────────────────────────────
+# Production: reads DATABASE_URL from environment (set by Docker Compose).
+# Development fallback: SQLite (auto-used when DATABASE_URL is not set).
+_DATABASE_URL = os.environ.get(
+    'DATABASE_URL',
+    f'sqlite:///{BASE_DIR / "db.sqlite3"}'
+)
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME':   BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.parse(_DATABASE_URL, conn_max_age=600)
 }
 
 # ─── Auth ────────────────────────────────────────────────────────────────────
@@ -114,29 +118,21 @@ CORS_ALLOWED_ORIGINS = os.environ.get(
 ).split(',')
 CORS_ALLOW_CREDENTIALS = True
 
-CELERY_BROKER_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
-CELERY_ACCEPT_CONTENT = ['json']
+CELERY_BROKER_URL      = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND  = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+CELERY_ACCEPT_CONTENT  = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = 'Africa/Kampala'
+CELERY_TIMEZONE        = 'Africa/Kampala'
+# In production (Docker) Redis is always present — disable eager mode.
+# Override via env var for local dev without Redis: CELERY_TASK_ALWAYS_EAGER=True
+CELERY_TASK_ALWAYS_EAGER = os.environ.get('CELERY_TASK_ALWAYS_EAGER', 'False') == 'True'
 
-# Auto-fallback to eager execution mode if Redis is offline/unreachable
-CELERY_TASK_ALWAYS_EAGER = True
-import socket
-from urllib.parse import urlparse
-try:
-    _url = urlparse(CELERY_BROKER_URL)
-    _host = _url.hostname or 'localhost'
-    _port = _url.port or 6379
-    _s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    _s.settimeout(0.5)
-    _s.connect((_host, _port))
-    _s.close()
-    CELERY_TASK_ALWAYS_EAGER = False
-except Exception:
-    # Redis is unreachable, running tasks synchronously to prevent HTTP request hangs
-    pass
+# ─── MQTT ────────────────────────────────────────────────────────────────────
+MQTT_BROKER   = os.environ.get('MQTT_BROKER', 'localhost')
+MQTT_PORT     = int(os.environ.get('MQTT_PORT', 1883))
+MQTT_USERNAME = os.environ.get('MQTT_USERNAME', '')
+MQTT_PASSWORD = os.environ.get('MQTT_PASSWORD', '')
 
 
 # Periodic tasks
@@ -146,9 +142,11 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'monitoring.tasks.calculate_all_cumulative_durations',
         'schedule': crontab(minute='*/15'),
     },
-    'check-offline-nodes-every-15-min': {
+    # Tightened from */15 to */2 to support real-time node offline detection
+    # (nodes now publish every 5s; flag as offline after 60s without a reading)
+    'check-offline-nodes-every-2-min': {
         'task': 'monitoring.tasks.check_offline_nodes',
-        'schedule': crontab(minute='*/15'),
+        'schedule': crontab(minute='*/2'),
     },
 }
 

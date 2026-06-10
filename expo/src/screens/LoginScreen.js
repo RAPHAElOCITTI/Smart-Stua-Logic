@@ -32,6 +32,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
+import { syncPushTokenWithBackend } from '../utils/notifications';
 
 // ─── Secure Storage Key ────────────────────────────────────────────────────────
 // Use this exact key when reading the token back in api.js interceptor
@@ -128,6 +129,9 @@ export default function LoginScreen({ navigation }) {
           throw new Error('No authentication token received from server.');
         }
       }
+      
+      // Sync the push token with the backend asynchronously (don't block navigation)
+      syncPushTokenWithBackend();
 
       // ── Navigation Handoff ────────────────────────────────────────────────
       // `replace` removes LoginScreen from the stack so back-press goes to OS home,

@@ -5,7 +5,10 @@ Matches the ER diagram exactly:
   Users, SensorNodes, Readings, AlertLogs, Thresholds
 """
 
+import secrets
 from django.db import models
+from django.db.models.signals import pre_save
+from django.dispatch import receiver
 from django.utils import timezone
 
 
@@ -52,6 +55,7 @@ class User(models.Model):
     password_hash = models.CharField(max_length=255)
     created_at   = models.DateTimeField(default=timezone.now)
     is_active    = models.BooleanField(default=True)
+    push_token   = models.CharField(max_length=255, blank=True, null=True)
 
     class Meta:
         db_table = 'users'
@@ -63,22 +67,43 @@ class User(models.Model):
 
 # ─── SensorNode ───────────────────────────────────────────────────────────────
 class SensorNode(models.Model):
-    """Registered ESP32+SIM800L sensor devices deployed in grain silos."""
+    """Registered Wi-Fi/Ethernet ESP32 sensor nodes deployed in grain storage."""
 
-    node_id        = models.AutoField(primary_key=True)
-    node_identifier = models.CharField(max_length=50, unique=True,
-                                        help_text='e.g. NODE_001')
-    location_label = models.CharField(max_length=200,
-                                       help_text='e.g. Gulu Main Store - Section A')
-    gateway_id     = models.CharField(max_length=100, blank=True, null=True,
-                                       help_text='SIM card number or GSM gateway ID')
-    status         = models.CharField(max_length=20, choices=NodeStatus.choices,
-                                       default=NodeStatus.ACTIVE)
+    node_id         = models.AutoField(primary_key=True)
+    node_identifier = models.CharField(
+        max_length=50, unique=True,
+        help_text='Human-readable node ID, e.g. NODE_001'
+    )
+    location_label  = models.CharField(
+        max_length=200,
+        help_text='Physical location, e.g. Gulu Main Store — Section A'
+    )
+    mac_address     = models.CharField(
+        max_length=17, blank=True, null=True,
+        help_text='Node Wi-Fi/Ethernet MAC address (AA:BB:CC:DD:EE:FF)'
+    )
+    # Kept for backwards compatibility; was GSM gateway ID.
+    gateway_id      = models.CharField(
+        max_length=100, blank=True, null=True,
+        help_text='Legacy field — use mac_address for new Wi-Fi nodes'
+    )
+    # Per-node secret key — auto-generated on creation, used to authenticate
+    # MQTT payloads and HTTP POST /api/readings/ requests.
+    api_key         = models.CharField(
+        max_length=64, unique=True, blank=True,
+        help_text='Auto-generated per-node secret key (do not share publicly)'
+    )
+    status          = models.CharField(
+        max_length=20, choices=NodeStatus.choices,
+        default=NodeStatus.ACTIVE
+    )
     last_reading_at = models.DateTimeField(blank=True, null=True)
-    pending_command = models.CharField(max_length=10, choices=DryerCommand.choices,
-                                        default=DryerCommand.NONE)
-    installed_at   = models.DateTimeField(default=timezone.now)
-    notes          = models.TextField(blank=True)
+    pending_command = models.CharField(
+        max_length=10, choices=DryerCommand.choices,
+        default=DryerCommand.NONE
+    )
+    installed_at    = models.DateTimeField(default=timezone.now)
+    notes           = models.TextField(blank=True)
 
     class Meta:
         db_table = 'sensor_nodes'
@@ -87,16 +112,33 @@ class SensorNode(models.Model):
     def __str__(self):
         return f'{self.node_identifier} — {self.location_label}'
 
+    def rotate_api_key(self):
+        """Regenerate the per-node API key (call when a key is compromised)."""
+        self.api_key = secrets.token_hex(32)
+        self.save(update_fields=['api_key'])
+        return self.api_key
+
+
+@receiver(pre_save, sender=SensorNode)
+def _auto_generate_api_key(sender, instance, **kwargs):
+    """Auto-generate a unique API key when a new SensorNode is saved without one."""
+    if not instance.api_key:
+        instance.api_key = secrets.token_hex(32)
+
 
 # ─── Reading ──────────────────────────────────────────────────────────────────
 class Reading(models.Model):
-    """Raw sensor data transmitted from GSM nodes to the Django API."""
+    """Raw sensor data transmitted from Wi-Fi/Ethernet nodes."""
 
     reading_id    = models.BigAutoField(primary_key=True)
     node          = models.ForeignKey(SensorNode, on_delete=models.CASCADE,
                                        related_name='readings', db_column='node_id')
     temperature_c = models.FloatField(help_text='Temperature in °C from DHT22')
     humidity_pct  = models.FloatField(help_text='Relative humidity % from DHT22')
+    moisture_pct  = models.FloatField(
+        null=True, blank=True,
+        help_text='Grain/soil moisture % from capacitive sensor (ESP32 ADC pin 34)'
+    )
     recorded_at   = models.DateTimeField(default=timezone.now,
                                           help_text='Server receipt timestamp')
     device_ts     = models.DateTimeField(blank=True, null=True,

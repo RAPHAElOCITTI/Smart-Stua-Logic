@@ -33,6 +33,7 @@ import DashboardScreen  from './src/screens/Dashboard';
 import DeviceListScreen from './src/screens/DeviceList';
 import AlertHistory     from './src/screens/AlertHistory';
 import SettingsScreen   from './src/screens/Settings';
+import { syncPushTokenWithBackend } from './src/utils/notifications';
 
 // ── Navigators ───────────────────────────────────────────────────────────────
 const RootStack = createStackNavigator();
@@ -98,6 +99,9 @@ function SplashGate({ navigation }) {
     (async () => {
       try {
         const token = await SecureStore.getItemAsync(SECURE_TOKEN_KEY);
+        if (token) {
+          syncPushTokenWithBackend();
+        }
         // `reset` clears the back-stack entirely, preventing the user from
         // navigating back to SplashGate with the hardware back button.
         navigation.reset({

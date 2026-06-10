@@ -1,9 +1,26 @@
+# ── Django Core ───────────────────────────────────────────────────────────────
 Django>=4.2,<5.0
 djangorestframework>=3.14
 django-cors-headers>=4.3
+django-filter>=23.0
+
+# ── Database ──────────────────────────────────────────────────────────────────
+psycopg2-binary>=2.9        # PostgreSQL driver (production)
+dj-database-url>=2.1        # Parse DATABASE_URL env var
+
+# ── Task Queue ────────────────────────────────────────────────────────────────
 celery>=5.3
 redis>=5.0
-twilio>=8.0
+
+# ── MQTT Bridge ───────────────────────────────────────────────────────────────
+paho-mqtt>=1.6,<2.0         # MQTT client for bridge management command
+
+# ── Production Server ─────────────────────────────────────────────────────────
 gunicorn>=21.2
+
+# ── Notifications ─────────────────────────────────────────────────────────────
+twilio>=8.0
+exponent-server-sdk>=0.2.0
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
 python-dotenv>=1.0
-django-filter>=23.0

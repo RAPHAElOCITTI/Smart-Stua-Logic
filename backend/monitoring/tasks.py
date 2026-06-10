@@ -82,6 +82,8 @@ def process_sensor_data(self, reading_id: int):
             )
             # Dispatch SMS asynchronously
             send_sms_alert.delay(alert.alert_id)
+            # Dispatch Push Notification asynchronously
+            send_push_alert.delay(alert.alert_id)
 
         # Trigger dryer for High risk
         if ari_score >= RISK_HIGH_THRESHOLD:
@@ -134,6 +136,7 @@ def process_sensor_data(self, reading_id: int):
                     action_taken=False,
                 )
                 send_sms_alert.delay(alert.alert_id)
+                send_push_alert.delay(alert.alert_id)
 
     return {
         'reading_id': reading_id,
@@ -183,7 +186,76 @@ def send_sms_alert(self, alert_id: int):
 
     except Exception as exc:
         logger.error(f'[SMS] Failed for alert {alert_id}: {exc}')
+        try:
+            from twilio.base.exceptions import TwilioRestException
+            if isinstance(exc, TwilioRestException):
+                # Don't retry for client errors, authentication failures, or rate limit issues
+                if exc.status in [400, 401, 403, 404, 429]:
+                    logger.warning(
+                        f'[SMS] Twilio permanent error (status {exc.status}, code {exc.code}) '
+                        f'— skipping retry. Details: {exc.msg}'
+                    )
+                    alert.sms_sid = f"FAILED: {exc.code or exc.status}"
+                    alert.save(update_fields=['sms_sid'])
+                    return
+        except ImportError:
+            pass
         raise self.retry(exc=exc)
+
+
+# ─── Push Notification Alert Task ─────────────────────────────────────────────
+@shared_task
+def send_push_alert(alert_id: int):
+    """
+    Sends an Expo Push Notification for a logged AlertLog entry
+    to the corresponding user with a valid push_token.
+    """
+    from .models import AlertLog, User
+
+    try:
+        alert = AlertLog.objects.select_related('node').get(alert_id=alert_id)
+    except AlertLog.DoesNotExist:
+        logger.error(f'[PUSH] Alert {alert_id} not found')
+        return
+
+    # Find the user matching the recipient's phone number
+    try:
+        user = User.objects.get(phone_number=alert.sent_to, is_active=True)
+    except User.DoesNotExist:
+        logger.warning(f'[PUSH] User with phone {alert.sent_to} not found')
+        return
+
+    if not user.push_token:
+        logger.info(f'[PUSH] No push token for user {user.full_name} — skipping push dispatch')
+        return
+
+    try:
+        from exponent_server_sdk import PushClient, PushMessage
+        
+        # Determine title based on alert type or risk level
+        title = f"Smart-Stua Alert [{alert.risk_level} Risk]"
+        if alert.alert_type == 'node_offline':
+            title = "❌ Node Offline Warning"
+        elif alert.alert_type == 'threshold_breach':
+            title = "⚠️ Sensor Threshold Breach"
+
+        response = PushClient().publish(
+            PushMessage(
+                to=user.push_token,
+                title=title,
+                body=alert.message,
+                sound='default',
+                channel_id='default',
+                data={
+                    'alert_id': alert.alert_id,
+                    'node_identifier': alert.node.node_identifier if alert.node else None,
+                },
+            )
+        )
+        response.validate_response()
+        logger.info(f'[PUSH] Sent to {user.full_name} ({user.phone_number}) successfully')
+    except Exception as exc:
+        logger.error(f'[PUSH] Failed to send push for alert {alert_id}: {exc}')
 
 
 # ─── Dryer Command Task ───────────────────────────────────────────────────────
@@ -352,5 +424,6 @@ def check_offline_nodes():
                 action_taken=False,
             )
             send_sms_alert.delay(alert.alert_id)
+            send_push_alert.delay(alert.alert_id)
         
         logger.warning(f"[OFFLINE] Node {node.node_identifier} detected offline and alert logged.")

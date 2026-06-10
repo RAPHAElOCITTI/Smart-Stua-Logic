@@ -1,0 +1,229 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Smart-Stua — Master Docker Compose
+# Usage: docker compose up -d --build
+# ═══════════════════════════════════════════════════════════════════════════════
+
+services:
+
+  # ── PostgreSQL 16 ────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: smartstua_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-smartstua_db}
+      POSTGRES_USER:     ${POSTGRES_USER:-smartstua}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Error - POSTGRES_PASSWORD must be set in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-smartstua} -d ${POSTGRES_DB:-smartstua_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── Redis 7 (Celery broker + result backend) ─────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: smartstua_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Eclipse Mosquitto 2 (MQTT Broker) ────────────────────────────────────────
+  # Exposed on host port 1883 so physical ESP32 nodes on the LAN can connect.
+  # All other services (backend, bridge) connect via Docker's internal network.
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: smartstua_mosquitto
+    restart: unless-stopped
+    ports:
+      - "${MQTT_PORT:-1883}:1883"
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_pub -h 127.0.0.1 -p 1883 -t health/check -m ping --quiet && echo ok"]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ── Django / Gunicorn (REST API) ─────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: production
+    container_name: smartstua_backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      DATABASE_URL:  postgres://${POSTGRES_USER:-smartstua}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-smartstua_db}
+      REDIS_HOST:    redis
+      REDIS_URL:     redis://redis:6379/0
+      MQTT_BROKER:   mosquitto
+      MQTT_PORT:     "1883"
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - static_files:/app/staticfiles
+      - backend_logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/health/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ── Celery Worker (async task processing: ARI, alerts, push) ─────────────────
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: production
+    container_name: smartstua_celery_worker
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      DATABASE_URL:  postgres://${POSTGRES_USER:-smartstua}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-smartstua_db}
+      REDIS_HOST:    redis
+      REDIS_URL:     redis://redis:6379/0
+    command:
+      - celery
+      - -A
+      - smartstua
+      - worker
+      - --loglevel=info
+      - --concurrency=2
+      - --logfile=/app/logs/celery_worker.log
+    volumes:
+      - backend_logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+
+  # ── Celery Beat (periodic scheduler: offline checks, cumulative ARI) ──────────
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: production
+    container_name: smartstua_celery_beat
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      DATABASE_URL:  postgres://${POSTGRES_USER:-smartstua}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-smartstua_db}
+      REDIS_HOST:    redis
+      REDIS_URL:     redis://redis:6379/0
+    command:
+      - celery
+      - -A
+      - smartstua
+      - beat
+      - --loglevel=info
+      - --logfile=/app/logs/celery_beat.log
+    volumes:
+      - backend_logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+
+  # ── MQTT Bridge (subscribes to node topics → persists readings via Django ORM)
+  mqtt_bridge:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: production
+    container_name: smartstua_mqtt_bridge
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      DATABASE_URL:  postgres://${POSTGRES_USER:-smartstua}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-smartstua_db}
+      REDIS_HOST:    redis
+      REDIS_URL:     redis://redis:6379/0
+      MQTT_BROKER:   mosquitto
+      MQTT_PORT:     "1883"
+    command:
+      - python
+      - manage.py
+      - mqtt_bridge
+    volumes:
+      - backend_logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - internal
+
+
+# ── Named Volumes ─────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  mosquitto_data:
+    driver: local
+  mosquitto_log:
+    driver: local
+  static_files:
+    driver: local
+  backend_logs:
+    driver: local
+
+
+# ── Networks ──────────────────────────────────────────────────────────────────
+# "internal" network: all services communicate here.
+# DB and Redis have NO exposed ports — only reachable inside Docker.
+# Mosquitto port 1883 and backend port 8000 are exposed to the host/LAN.
+networks:
+  internal:
+    driver: bridge

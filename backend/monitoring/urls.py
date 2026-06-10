@@ -12,6 +12,7 @@ urlpatterns = [
 
     # ── Device Management ────────────────────────────────────────────────────
     path('devices/', views.device_list, name='device-list'),
+    path('devices/register/', views.device_register, name='device-register'),
     path('devices/<int:node_id>/readings/', views.device_readings, name='device-readings'),
     path('devices/<int:node_id>/latest/', views.device_latest, name='device-latest'),
     path('devices/<str:node_id>/command/', views.device_command, name='device-command'),
@@ -30,4 +31,8 @@ urlpatterns = [
     # ── Auth (UC4) ────────────────────────────────────────────────────────────
     path('auth/login/', views.login_view, name='login'),
     path('auth/register/', views.register_view, name='register'),
+    path('auth/save-push-token/', views.save_push_token, name='save-push-token'),
+
+    # ── System Health ─────────────────────────────────────────────────────────
+    path('health/', views.health_check, name='health-check'),
 ]

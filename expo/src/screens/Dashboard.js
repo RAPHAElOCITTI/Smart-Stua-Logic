@@ -22,7 +22,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import {
   fetchDashboardSummary, fetchDeviceReadings,
-  sendDryerCommand, startPolling, stopPolling,
+  sendDryerCommand,
 } from '../api';
 import GaugeChart  from '../components/GaugeChart';
 import RiskIndicator from '../components/RiskIndicator';
@@ -82,12 +82,14 @@ export default function DashboardScreen() {
     }
   }, [selectedIndex]);
 
-  // 30-second polling
+  // Poll every 10s — aligned to firmware READ_INTERVAL_MS (5s) + network latency buffer
   useEffect(() => {
     fetchData();
-    startPolling(() => fetchData(true), 30000);
-    return () => stopPolling();
-  }, [selectedIndex]);
+    const interval = setInterval(() => {
+      fetchData(true);
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [selectedIndex, fetchData]);
 
   const onRefresh = () => {
     setRefreshing(true);

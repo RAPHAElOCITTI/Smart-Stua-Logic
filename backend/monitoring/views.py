@@ -58,13 +58,14 @@ def receive_reading(request):
         )
 
     data = serializer.validated_data
-    node = SensorNode.objects.get(node_identifier=data['node_id'])
+    node = data['_node']
 
     # Store reading
     reading = Reading.objects.create(
         node=node,
         temperature_c=data['temperature'],
         humidity_pct=data['humidity'],
+        moisture_pct=data.get('moisture_pct'),   # optional — None if not sent
         device_ts=data.get('device_ts'),
     )
 
@@ -103,6 +104,26 @@ def device_list(request):
     nodes = SensorNode.objects.prefetch_related('readings', 'readings__alert').all()
     serializer = SensorNodeSerializer(nodes, many=True)
     return Response(serializer.data)
+
+
+# ─── Device Registration (Plug-and-Play) ──────────────────────────────────────
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def device_register(request):
+    """
+    POST /api/devices/register/
+    Dynamic node registration endpoint. Allows the frontend dashboard to
+    provision new devices.
+    Expects: { "node_identifier": "NODE_XYZ", "location_label": "Silo B", "mac_address": "AA:BB:CC:DD:EE:FF" }
+    Returns: The created device object with the unique, auto-generated per-device api_key.
+    """
+    from .serializers import NodeRegistrationSerializer
+    serializer = NodeRegistrationSerializer(data=request.data)
+    if serializer.is_valid():
+        node = serializer.save()
+        logger.info(f'[DEVICE] Dynamic registration: {node.node_identifier} (MAC: {node.mac_address}) by {request.user}')
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 # ─── Historical Readings ──────────────────────────────────────────────────────
@@ -452,3 +473,37 @@ def dryer_override(request, node_id):
         f'by user {request.user}'
     )
     return Response({'status': 'queued', 'node': node.node_identifier, 'action': action})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def save_push_token(request):
+    """
+    POST /api/auth/save-push-token/
+    Saves the user's Expo push notification token.
+    """
+    username = request.user.username
+    if not username.startswith('smartstua_'):
+        return Response({'error': 'Invalid user account'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        user_id = int(username.split('_')[1])
+        user = User.objects.get(user_id=user_id)
+        user.push_token = request.data.get('push_token')
+        user.save(update_fields=['push_token'])
+        logger.info(f'[PUSH] Saved token for user {user.full_name}')
+        return Response({'status': 'token saved'})
+    except (ValueError, IndexError, User.DoesNotExist):
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+# ─── System Health ────────────────────────────────────────────────────────────
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def health_check(request):
+    """
+    GET /api/health/
+    Used by docker-compose healthchecks to ensure the app is up.
+    """
+    return Response({'status': 'healthy', 'timestamp': timezone.now().isoformat()})

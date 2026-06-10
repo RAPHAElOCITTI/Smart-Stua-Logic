@@ -36,10 +36,10 @@ class SensorNodeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model  = SensorNode
-        fields = ['node_id', 'node_identifier', 'location_label', 'gateway_id',
-                  'status', 'last_reading_at', 'pending_command',
-                  'installed_at', 'notes', 'latest_ari']
-        read_only_fields = ['node_id', 'last_reading_at', 'installed_at']
+        fields = ['node_id', 'node_identifier', 'location_label', 'mac_address',
+                  'gateway_id', 'api_key', 'status', 'last_reading_at',
+                  'pending_command', 'installed_at', 'notes', 'latest_ari']
+        read_only_fields = ['node_id', 'api_key', 'last_reading_at', 'installed_at']
 
     def get_latest_ari(self, obj):
         """Include latest ARI score in node listing response."""
@@ -62,7 +62,7 @@ class ReadingSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Reading
         fields = ['reading_id', 'node', 'node_identifier', 'temperature_c',
-                  'humidity_pct', 'recorded_at', 'device_ts']
+                  'humidity_pct', 'moisture_pct', 'recorded_at', 'device_ts']
         read_only_fields = ['reading_id', 'recorded_at', 'node_identifier']
 
 
@@ -99,30 +99,66 @@ class ThresholdSerializer(serializers.ModelSerializer):
         return data
 
 
-# ─── Sensor Payload (GSM node → API) ─────────────────────────────────────────
+# ─── Sensor Payload (Wi-Fi node → API) ────────────────────────────────────
 class SensorPayloadSerializer(serializers.Serializer):
     """
-    Validates incoming JSON from ESP32+SIM800L nodes.
-    Format: {"node_id": "NODE_001", "temperature": 28.5, "humidity": 72.3, "api_key": "xxx"}
+    Validates incoming JSON from ESP32 Wi-Fi/Ethernet nodes.
+    Full payload example:
+      {
+        "node_id":      "NODE_001",
+        "temperature":  28.5,
+        "humidity":     72.3,
+        "moisture_pct": 41.2,
+        "api_key":      "<per-node-64-char-hex>"
+      }
+    Auth: validated against the per-node SensorNode.api_key.
     """
-    node_id     = serializers.CharField(max_length=50)
-    temperature = serializers.FloatField(min_value=-40.0, max_value=80.0)
-    humidity    = serializers.FloatField(min_value=0.0, max_value=100.0)
-    api_key     = serializers.CharField(max_length=200)
-    device_ts   = serializers.DateTimeField(required=False, allow_null=True)
+    node_id      = serializers.CharField(max_length=50)
+    temperature  = serializers.FloatField(min_value=-40.0, max_value=80.0)
+    humidity     = serializers.FloatField(min_value=0.0, max_value=100.0)
+    moisture_pct = serializers.FloatField(min_value=0.0, max_value=100.0,
+                                          required=False, allow_null=True)
+    api_key      = serializers.CharField(max_length=200)
+    device_ts    = serializers.DateTimeField(required=False, allow_null=True)
 
-    def validate_api_key(self, value):
-        if value != settings.SENSOR_API_KEY:
-            raise serializers.ValidationError('Invalid API key.')
-        return value
+    def validate(self, data):
+        """Cross-field validation: check node exists then verify its api_key."""
+        node_id = data.get('node_id')
+        api_key = data.get('api_key')
 
-    def validate_node_id(self, value):
-        if not SensorNode.objects.filter(node_identifier=value,
-                                          status='active').exists():
+        try:
+            node = SensorNode.objects.get(node_identifier=node_id, status='active')
+        except SensorNode.DoesNotExist:
             raise serializers.ValidationError(
-                f'Node "{value}" not found or not active.'
+                {'node_id': f'Node "{node_id}" not found or not active.'}
             )
-        return value
+
+        # Per-node key check (timing-safe comparison)
+        import hmac
+        if not hmac.compare_digest(node.api_key, api_key):
+            raise serializers.ValidationError(
+                {'api_key': 'Invalid API key for this node.'}
+            )
+
+        # Stash resolved node so view doesn't need a second DB hit
+        data['_node'] = node
+        return data
+
+
+# ─── Node Registration (dashboard → API) ───────────────────────────────────────
+class NodeRegistrationSerializer(serializers.ModelSerializer):
+    """
+    Used by POST /api/devices/register/ — lets dashboard users register
+    a new node without touching the admin panel or code.
+    api_key is returned once on creation (read_only thereafter).
+    """
+    api_key = serializers.CharField(read_only=True)
+
+    class Meta:
+        model  = SensorNode
+        fields = ['node_id', 'node_identifier', 'location_label',
+                  'mac_address', 'notes', 'api_key']
+        read_only_fields = ['node_id', 'api_key']
 
 
 # ─── Dashboard Summary ────────────────────────────────────────────────────────
