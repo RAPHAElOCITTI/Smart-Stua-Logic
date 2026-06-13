@@ -43,24 +43,44 @@ if [[ "${FIRST_ARG}" == "gunicorn" ]]; then
   # ─── First-Boot: Seed Default Admin ─────────────────────────────────────────
   echo "🔑  Checking for initial admin user..."
   python manage.py shell << 'PYEOF'
-from monitoring.models import User
+import os
 from django.contrib.auth.hashers import make_password
-import os, secrets
+from django.contrib.auth.models import User as DjangoUser
 
+ADMIN_EMAIL    = os.environ.get('ADMIN_EMAIL',    'admin@smartstua.local')
+ADMIN_PHONE    = os.environ.get('ADMIN_PHONE',    '+256000000000')
+ADMIN_PASSWORD = os.environ.get('ADMIN_DEFAULT_PASSWORD', 'SmartStua@Change-Me!')
+
+# ── 1. Django superuser (for /admin/ panel login) ────────────────────────────
+if not DjangoUser.objects.filter(username='admin').exists():
+    DjangoUser.objects.create_superuser(
+        username='admin',
+        email=ADMIN_EMAIL,
+        password=ADMIN_PASSWORD,
+    )
+    print(f"✅  Django superuser created.")
+    print(f"    Username: admin")
+    print(f"    Password: {ADMIN_PASSWORD}")
+    print(f"⚠️  CHANGE THIS PASSWORD after first login at /admin/")
+else:
+    print("ℹ️   Django superuser already exists — skipping.")
+
+# ── 2. Smart-Stua custom User (for mobile app API login) ─────────────────────
+from monitoring.models import User
 if not User.objects.filter(role='admin').exists():
-    default_pass = os.environ.get('ADMIN_DEFAULT_PASSWORD', 'SmartStua@Change-Me!')
     User.objects.create(
         full_name='System Admin',
-        phone_number=os.environ.get('ADMIN_PHONE', '+256000000000'),
-        email=os.environ.get('ADMIN_EMAIL', 'admin@smartstua.local'),
+        phone_number=ADMIN_PHONE,
+        email=ADMIN_EMAIL,
         role='admin',
-        password_hash=make_password(default_pass),
+        password_hash=make_password(ADMIN_PASSWORD),
         is_active=True,
     )
-    print(f"✅  Default admin created. Phone: {os.environ.get('ADMIN_PHONE', '+256000000000')}")
-    print(f"⚠️   Default password is set. CHANGE IT after first login!")
+    print(f"✅  Smart-Stua app user created.")
+    print(f"    Phone:    {ADMIN_PHONE}")
+    print(f"    Password: {ADMIN_PASSWORD}")
 else:
-    print("ℹ️   Admin user already exists — skipping seed.")
+    print("ℹ️   Smart-Stua app user already exists — skipping.")
 PYEOF
 
 fi

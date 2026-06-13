@@ -13,7 +13,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
 // ─── Base URL Configuration ───────────────────────────────────────────────────
-const DEFAULT_BASE_URL = 'http://192.168.1.180:8000/api';
+const DEFAULT_BASE_URL = 'http://192.168.100.79:8000/api';
 const BASE_URL_KEY     = '@smart_stua_base_url';   // AsyncStorage — not sensitive
 export const SECURE_TOKEN_KEY = 'smart_stua_auth_token'; // SecureStore — encrypted
 

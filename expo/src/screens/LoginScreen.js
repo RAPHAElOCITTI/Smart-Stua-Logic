@@ -40,7 +40,7 @@ export const SECURE_TOKEN_KEY = 'smart_stua_auth_token';
 
 // ─── API Configuration ────────────────────────────────────────────────────────
 // Replace with your machine's local IP address (run `ipconfig` on Windows)
-const BASE_URL = 'http://192.168.1.180:8000';
+const BASE_URL = 'http://192.168.100.79:8000';
 const LOGIN_ENDPOINT = `${BASE_URL}/api/auth/login/`;
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
