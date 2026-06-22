@@ -13,8 +13,9 @@ dj-database-url>=2.1        # Parse DATABASE_URL env var
 celery>=5.3
 redis>=5.0
 
-# ── MQTT Bridge ───────────────────────────────────────────────────────────────
-paho-mqtt>=1.6,<2.0         # MQTT client for bridge management command
+# ── MQTT ──────────────────────────────────────────────────────────────────────
+paho-mqtt>=1.6
+certifi>=2024.0       # CA bundle for HiveMQ Cloud TLS verification
 
 # ── Production Server ─────────────────────────────────────────────────────────
 gunicorn>=21.2

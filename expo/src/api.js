@@ -13,9 +13,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
 // ─── Base URL Configuration ───────────────────────────────────────────────────
-const DEFAULT_BASE_URL = 'http://192.168.1.179:8000/api';
+// Production backend on Render.com. Update this if you use a custom domain.
+const DEFAULT_BASE_URL = 'https://smartstua-backend.onrender.com/api';
 const BASE_URL_KEY = '@smart_stua_base_url';   // AsyncStorage — not sensitive
 export const SECURE_TOKEN_KEY = 'smart_stua_auth_token'; // SecureStore — encrypted
+
+// Local IPs that should never appear in a production build.
+// If any of these are found in AsyncStorage, they are cleared automatically.
+const STALE_LOCAL_PATTERNS = ['192.168.', '127.0.0.1', 'localhost', '10.0.'];
 
 // Axios instance
 const api = axios.create({
@@ -37,16 +42,21 @@ api.interceptors.request.use(async config => {
       SecureStore.getItemAsync(SECURE_TOKEN_KEY),  // auth token — encrypted
     ]);
     if (baseUrl) {
-      if (baseUrl.includes('192.168.1.179')) {
-        await AsyncStorage.removeItem(BASE_URL_KEY);
+      const isStale = STALE_LOCAL_PATTERNS.some(pat => baseUrl.includes(pat));
+      if (isStale) {
+        await AsyncStorage.removeItem(BASE_URL_KEY); // Clear stale local URL
       } else {
-        config.baseURL = baseUrl + '/api';
+        // Stored URL is already full (e.g. https://smartstua-backend.onrender.com)
+        // Strip trailing /api if present to avoid double /api/api/ paths
+        const cleanBase = baseUrl.replace(/\/api\/?$/, '');
+        config.baseURL = cleanBase + '/api';
       }
     }
     if (token) config.headers.Authorization = `Token ${token}`; // DRF Token auth
   } catch (_) { }
   return config;
 });
+
 
 // ─── Config Helpers ───────────────────────────────────────────────────────────
 export const setBaseUrl = async url => {

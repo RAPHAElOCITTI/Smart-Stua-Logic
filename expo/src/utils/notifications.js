@@ -46,18 +46,20 @@ export async function registerForPushNotificationsAsync() {
       if (!projectId) {
         console.warn(
           '[Push Notifications] EAS Project ID not found in app.json.\n' +
-          'To receive push notifications, please run "eas project:init" ' +
-          'or configure extra.eas.projectId inside your app.json under "expo".'
+          'Run "eas build:configure" to set it up. Push notifications disabled.'
         );
+        // Return null — do NOT throw. Missing push token is non-fatal.
+        return null;
       }
-      
+
       // Fetch token (uses EAS project ID if available)
       token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
     } else {
       console.log('Must use physical device for Push Notifications');
     }
   } catch (error) {
-    console.warn('Error registering for push notifications:', error);
+    // Catch ALL errors so push notification failure never crashes the app.
+    console.warn('Error registering for push notifications:', error?.message ?? error);
   }
 
   return token;

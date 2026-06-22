@@ -28,6 +28,8 @@
       "versionCode": 1,
       "permissions": [
         "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE"
       ]
     },
@@ -48,11 +50,11 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "replace-with-your-eas-project-id"
+        "projectId": "d5e71749-ff1e-46e0-a3a3-b12a6b2657bd"
       }
     },
     "updates": {
-      "url": "https://u.expo.dev/replace-with-your-eas-project-id"
+      "url": "https://u.expo.dev/d5e71749-ff1e-46e0-a3a3-b12a6b2657bd"
     }
   }
 }

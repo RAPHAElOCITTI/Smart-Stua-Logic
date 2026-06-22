@@ -39,8 +39,9 @@ import { syncPushTokenWithBackend } from '../utils/notifications';
 export const SECURE_TOKEN_KEY = 'smart_stua_auth_token';
 
 // ─── API Configuration ────────────────────────────────────────────────────────
-// Replace with your machine's local IP address (run `ipconfig` on Windows)
-const BASE_URL = 'http://192.168.1.179:8000';
+// Production backend on Render.com.
+// Change this in Settings screen if running locally (http://192.168.x.x:8000).
+const BASE_URL = 'https://smartstua-backend.onrender.com';
 const LOGIN_ENDPOINT = `${BASE_URL}/api/auth/login/`;
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
