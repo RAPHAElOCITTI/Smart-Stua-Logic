@@ -121,6 +121,7 @@ class SensorReadingAPITestCase(TestCase):
             node_identifier='NODE_001',
             location_label='Test Grain Store - Section A',
             status=NodeStatus.ACTIVE,
+            api_key=self.api_key,
         )
         Threshold.objects.create(
             node=self.node,

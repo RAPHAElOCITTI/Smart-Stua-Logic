@@ -1,0 +1,38 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Smart-Stua — Local Development Overrides
+#
+# This file is automatically merged with docker-compose.yml by Docker Compose
+# when you run `docker compose up` locally. It NEVER runs in production.
+#
+# What it changes from the production compose:
+#   1. Reverts Mosquitto to anonymous mode (no credentials needed locally)
+#   2. Exposes backend port 8000 directly (Nginx not needed for local dev)
+#   3. Disables the certbot service (no TLS locally)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+services:
+
+  # ── Mosquitto: use anonymous dev config locally ───────────────────────────────
+  mosquitto:
+    volumes:
+      - ./mosquitto/config/mosquitto.dev.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    # Override volumes to NOT mount passwd/acl files (not needed for dev)
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_pub -h 127.0.0.1 -p 1883 -t health/check -m ping --quiet && echo ok"]
+
+  # ── Backend: expose port 8000 directly for local API access ──────────────────
+  backend:
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+
+  # ── Nginx: disabled locally (backend is directly accessible on 8000) ─────────
+  nginx:
+    profiles:
+      - production
+
+  # ── Certbot: disabled locally ─────────────────────────────────────────────────
+  certbot:
+    profiles:
+      - production

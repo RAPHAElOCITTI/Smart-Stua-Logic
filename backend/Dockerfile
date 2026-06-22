@@ -52,7 +52,7 @@ RUN mkdir -p /app/staticfiles /app/logs \
 
 # Entrypoint script (migrations, collectstatic, first-boot seed)
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 
 USER appuser
 EXPOSE 8000

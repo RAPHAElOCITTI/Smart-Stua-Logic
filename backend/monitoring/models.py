@@ -67,9 +67,23 @@ class User(models.Model):
 
 # ─── SensorNode ───────────────────────────────────────────────────────────────
 class SensorNode(models.Model):
-    """Registered Wi-Fi/Ethernet ESP32 sensor nodes deployed in grain storage."""
+    """Registered Wi-Fi/Ethernet ESP32 sensor nodes deployed in grain storage.
+
+    Ownership: every node is associated with one User (Farmer or Store Manager).
+    The owner field drives RBAC — non-admin users can only access their own nodes.
+    Admins (role='admin') bypass this filter and see all nodes globally.
+    """
 
     node_id         = models.AutoField(primary_key=True)
+    # Ownership — drives RBAC. Null for legacy nodes until backfilled.
+    owner           = models.ForeignKey(
+        'User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='owned_nodes',
+        help_text='The user (Farmer/Store Manager/Admin) who registered this node.'
+    )
     node_identifier = models.CharField(
         max_length=50, unique=True,
         help_text='Human-readable node ID, e.g. NODE_001'
@@ -189,9 +203,10 @@ class AlertLog(models.Model):
         ]
 
     def __str__(self):
-        return (f'[{self.risk_level}] ARI={self.ari_value:.1f} '
-                f'Node={self.node.node_identifier} '
-                f'@ {self.sent_at:%Y-%m-%d %H:%M}')
+        ari_str = f'{self.ari_value:.1f}' if self.ari_value is not None else 'N/A'
+        node_id = self.node.node_identifier if self.node else 'No Node'
+        sent_str = f'{self.sent_at:%Y-%m-%d %H:%M}' if self.sent_at else 'Unknown'
+        return f'[{self.risk_level}] ARI={ari_str} Node={node_id} @ {sent_str}'
 
 
 # ─── Threshold ────────────────────────────────────────────────────────────────

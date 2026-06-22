@@ -1,0 +1,42 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Mosquitto ACL — Topic Access Control
+#
+# Syntax:
+#   user <username>
+#   topic [read|write|readwrite] <topic_pattern>
+#
+# Patterns:
+#   +  matches one level (e.g. nodes/+/telemetry)
+#   #  matches all remaining levels
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Bridge User (Django mqtt_bridge service) ───────────────────────────────────
+# The bridge subscribes to all node telemetry topics and health checks.
+# It also publishes dryer commands back to nodes.
+user bridge
+topic readwrite nodes/#
+topic readwrite health/#
+
+# ── Per-ESP32 Node Users ───────────────────────────────────────────────────────
+# Each physical node authenticates with its own user account.
+# A node can ONLY publish to its own telemetry topic.
+# It can READ from its own command topic (for dryer on/off).
+#
+# Pattern: node users follow the naming convention matching node_identifier.
+# Add one block per registered node.
+
+user NODE_001
+topic write nodes/NODE_001/telemetry
+topic read  nodes/NODE_001/command
+
+user NODE_002
+topic write nodes/NODE_002/telemetry
+topic read  nodes/NODE_002/command
+
+user NODE_003
+topic write nodes/NODE_003/telemetry
+topic read  nodes/NODE_003/command
+
+# ── Default fallback: deny everything not explicitly allowed ───────────────────
+# Mosquitto's default is to deny unauthenticated topics, but this makes
+# the intent explicit. No catch-all rule means unlisted topics are blocked.

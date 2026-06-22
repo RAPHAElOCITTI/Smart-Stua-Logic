@@ -1,0 +1,142 @@
+name: Smart-Stua CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/smartstua-backend
+
+jobs:
+
+  # ─── Job 1: Run Django Test Suite ──────────────────────────────────────────
+  test:
+    name: Django Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: smartstua_test
+          POSTGRES_USER: smartstua
+          POSTGRES_PASSWORD: test_password_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U smartstua -d smartstua_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Run migrations
+        working-directory: backend
+        env:
+          DEBUG: "True"
+          SECRET_KEY: ci-test-secret-key-not-for-production
+          DATABASE_URL: postgres://smartstua:test_password_ci@localhost:5432/smartstua_test
+          REDIS_URL: redis://localhost:6379/0
+          CELERY_TASK_ALWAYS_EAGER: "True"
+        run: python manage.py migrate --noinput
+
+      - name: Run tests
+        working-directory: backend
+        env:
+          DEBUG: "True"
+          SECRET_KEY: ci-test-secret-key-not-for-production
+          DATABASE_URL: postgres://smartstua:test_password_ci@localhost:5432/smartstua_test
+          REDIS_URL: redis://localhost:6379/0
+          CELERY_TASK_ALWAYS_EAGER: "True"
+        run: python manage.py test monitoring --verbosity=2
+
+  # ─── Job 2: Build & Push Docker Image ──────────────────────────────────────
+  build-push:
+    name: Build & Push Image
+    runs-on: ubuntu-latest
+    needs: test
+    # Only build on pushes to main, not on PRs
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable=true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          target: production
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ─── Job 3: Deploy to Render.com ───────────────────────────────────────────
+  deploy-render:
+    name: Deploy to Render
+    runs-on: ubuntu-latest
+    needs: build-push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Trigger Render deploy hook
+        # RENDER_DEPLOY_HOOK_URL: Get from Render dashboard → Service → Settings → Deploy Hook
+        # Add it as a repository secret: Settings → Secrets → Actions → New secret
+        run: |
+          curl -s --fail-with-body \
+            -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d '{"clearCache": false}'
+          echo "✅ Render deploy triggered successfully."

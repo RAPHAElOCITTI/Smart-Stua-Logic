@@ -13,10 +13,14 @@ urlpatterns = [
     # ── Device Management ────────────────────────────────────────────────────
     path('devices/', views.device_list, name='device-list'),
     path('devices/register/', views.device_register, name='device-register'),
+    path('devices/<int:node_id>/', views.device_detail, name='device-detail'),
     path('devices/<int:node_id>/readings/', views.device_readings, name='device-readings'),
     path('devices/<int:node_id>/latest/', views.device_latest, name='device-latest'),
     path('devices/<str:node_id>/command/', views.device_command, name='device-command'),
     path('devices/<int:node_id>/dryer/', views.dryer_override, name='dryer-override'),
+    path('devices/<int:node_id>/update/', views.device_update, name='device-update'),
+    path('devices/<int:node_id>/delete/', views.device_delete, name='device-delete'),
+    path('devices/<int:node_id>/rotate-key/', views.rotate_api_key, name='rotate-key'),
 
     # ── Dashboard ─────────────────────────────────────────────────────────────
     path('dashboard/summary/', views.dashboard_summary, name='dashboard-summary'),

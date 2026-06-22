@@ -27,6 +27,7 @@ import {
 import GaugeChart  from '../components/GaugeChart';
 import RiskIndicator from '../components/RiskIndicator';
 import TrendChart  from '../components/TrendChart';
+import MoistureCard from '../components/MoistureCard';
 
 const { width } = Dimensions.get('window');
 
@@ -236,6 +237,13 @@ export default function DashboardScreen() {
                 color="#0A84FF"
               />
             </View>
+
+            {/* Real-Time Moisture Monitoring Section */}
+            <MoistureCard
+              moisturePct={selectedNode.moisture_pct}
+              nodeIdentifier={selectedNode.node_identifier}
+              status={selectedNode.status}
+            />
 
             {/* Dryer Status Card */}
             <View style={styles.card}>

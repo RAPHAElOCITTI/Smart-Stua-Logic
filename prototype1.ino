@@ -18,23 +18,24 @@
 // ==========================================
 
 // Node Identity — must match node_identifier registered in the dashboard
-const char *NODE_ID = "WIFI_NODE_001";
+const char *NODE_ID = "WIFI_NODE_002";
 
 // Wi-Fi Settings
-const char *ssid     = "YOUR_SSID";
-const char *password = "YOUR_PASSWORD";
+const char *ssid = "Rafy";
+const char *password = "edwinocaya2";
 
 // MQTT Broker Settings
 // Set mqtt_server to the LAN IP of the machine running docker compose.
 // Find it with: ip addr (Linux/Mac) or ipconfig (Windows)
-const char *mqtt_server = "192.168.X.X";
-const int   mqtt_port   = 1883;
+const char *mqtt_server = "192.168.1.179";
+const int mqtt_port = 1883;
 // Topic is built dynamically in setup() as: nodes/<NODE_ID>/telemetry
 char mqtt_topic[64];
 
 // Node Authentication
 // Paste the api_key returned by POST /api/devices/register/ here.
-const char *API_KEY = "YOUR_64_CHAR_HEX_KEY_FROM_DASHBOARD";
+const char *API_KEY =
+    "402fcaacdfa8799b7cf5d8886683c64337aa31ffaabd504777f57a87a1dd74e1";
 
 // Reading interval — how often to sample sensors and publish (milliseconds)
 #define READ_INTERVAL_MS 5000 // 5 seconds → real-time dashboard
@@ -42,7 +43,9 @@ const char *API_KEY = "YOUR_64_CHAR_HEX_KEY_FROM_DASHBOARD";
 // Pin Definitions
 #define DHT_PIN 15
 #define MOISTURE_PIN 34
+#ifndef LED_BUILTIN
 #define LED_BUILTIN 2
+#endif
 
 // DHT22 Settings
 #define DHT_TYPE DHT11
@@ -191,7 +194,16 @@ void loop() {
     float temp = dht.readTemperature();
     float hum = dht.readHumidity();
     int rawMoist = analogRead(MOISTURE_PIN);
-    float moistPct = (rawMoist / 4095.0f) * 100.0f;
+    // Moisture Calibration: capacitive & analog sensors output HIGH voltage
+    // when dry, LOW when wet. Adjust DRY_ADC and WET_ADC based on your serial
+    // monitor readings if needed.
+    const int DRY_ADC = 3500; // Raw ADC value in open air (0% moisture)
+    const int WET_ADC =
+        1200; // Raw ADC value submerged in water (100% moisture)
+
+    // Map the raw value to a percentage (0% to 100%) and constrain it
+    float moistPct = map(rawMoist, DRY_ADC, WET_ADC, 0, 100);
+    moistPct = constrain(moistPct, 0.0f, 100.0f);
 
     Serial.printf("[SENSOR] T=%.1f°C  H=%.1f%%  Moist=%.1f%%\n", temp, hum,
                   moistPct);
@@ -204,7 +216,11 @@ void loop() {
     }
 
     // Build JSON payload (field names match SensorPayloadSerializer)
+#if ARDUINOJSON_VERSION_MAJOR >= 7
+    JsonDocument doc;
+#else
     StaticJsonDocument<256> doc;
+#endif
     doc["node_id"] = NODE_ID;
     doc["temperature"] = temp;
     doc["humidity"] = hum;

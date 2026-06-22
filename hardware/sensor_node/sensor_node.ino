@@ -1,375 +1,242 @@
 /**
- * Smart-Stua Sensor Node Firmware v2
- * Hardware: ESP32 + DHT22 + SIM800L + Relay (GPIO)
+ * Project: SMART-STUA / SmartSilo Grain Monitoring Node
+ * Hardware: ESP32, DHT22, Analog Moisture Sensor
+ * Protocol: MQTT over Wi-Fi (Continuous Real-Time Loop)
  *
- * Dual Connectivity Strategy:
- *   1. WiFi (Primary)  — ESP32 built-in; faster, free after setup
- *   2. GSM/GPRS (Fallback) — SIM800L; used when WiFi unavailable
- *
- * Communication: HTTP POST JSON → Django REST API /api/readings/
- * Interval: Deep sleep between 15-minute readings (battery/solar optimised)
- */
+ * Refactored from deep-sleep duty-cycle to a persistent MQTT connection
+ * that publishes telemetry every READ_INTERVAL_MS for a live dashboard.
+ **/
 
-#include <Arduino.h>
+#include <Adafruit_Sensor.h>
+#include <ArduinoJson.h>
 #include <DHT.h>
+#include <PubSubClient.h>
 #include <WiFi.h>
-#include <HTTPClient.h>
-#include <HardwareSerial.h>
-#include "esp_sleep.h"
 
-// ─── Pin Definitions ─────────────────────────────────────────────────────────
-#define DHT_PIN      4       // DHT22 data pin
-#define DHT_TYPE     DHT22
-#define RELAY_PIN    26      // Grain dryer relay (HIGH = ON)
-#define SIM800_TX    17      // ESP32 TX → SIM800L RX
-#define SIM800_RX    16      // ESP32 RX ← SIM800L TX
+// ==========================================
+// 1. CONFIGURATION — fill these in before flashing
+// ==========================================
 
-// ─── Node Configuration ───────────────────────────────────────────────────────
-#define NODE_ID   "NODE_001"
-#define API_KEY   "REPLACE_WITH_YOUR_API_KEY"
+// Node Identity — must match node_identifier registered in the dashboard
+const char *NODE_ID = "WIFI_NODE_002";
 
-// ─── WiFi Credentials ─────────────────────────────────────────────────────────
-// Primary network (e.g. office/store router)
-#define WIFI_SSID_1  "Rafy"
-#define WIFI_PASS_1  "edwinocaya2"
-// Secondary fallback WiFi (optional — leave blank to skip)
-#define WIFI_SSID_2  ""
-#define WIFI_PASS_2  ""
+// Wi-Fi Settings
+const char *ssid = "Rafy";
+const char *password = "edwinocaya2";
 
-// ─── Server Configuration ─────────────────────────────────────────────────────
-#define SERVER_HOST      "192.168.1.179"
-#define SERVER_PORT      8000
-#define READINGS_PATH    "/api/readings/"
-#define COMMAND_PATH     "/api/devices/" NODE_ID "/command/?api_key=" API_KEY
+// MQTT Broker Settings
+// Set mqtt_server to the LAN IP of the machine running docker compose.
+// Find it with: ip addr (Linux/Mac) or ipconfig (Windows)
+const char *mqtt_server = "192.168.1.179";
+const int mqtt_port = 1883;
+// Topic is built dynamically in setup() as: nodes/<NODE_ID>/telemetry
+char mqtt_topic[64];
 
-// Full URLs
-#define READINGS_URL  "http://" SERVER_HOST READINGS_PATH
-#define COMMAND_URL   "http://" SERVER_HOST COMMAND_PATH
+// Node Authentication
+// Paste the api_key returned by POST /api/devices/register/ here.
+const char *API_KEY =
+    "402fcaacdfa8799b7cf5d8886683c64337aa31ffaabd504777f57a87a1dd74e1";
 
-// ─── GSM APN (SIM card data plan) ────────────────────────────────────────────
-// Change "internet" to your SIM provider's APN (e.g. "safaricom", "mtn", "airtel")
-#define GSM_APN  "internet"
+// Reading interval — how often to sample sensors and publish (milliseconds)
+#define READ_INTERVAL_MS 5000 // 5 seconds → real-time dashboard
 
-// ─── Timing ───────────────────────────────────────────────────────────────────
-#define SLEEP_MINUTES    15
-#define SLEEP_US         (SLEEP_MINUTES * 60ULL * 1000000ULL)
-#define WIFI_TIMEOUT_MS  12000
-#define HTTP_TIMEOUT_MS  15000
+// Pin Definitions
+#define DHT_PIN 15
+#define MOISTURE_PIN 34
+#ifndef LED_BUILTIN
+#define LED_BUILTIN 2
+#endif
 
-// ─── Globals ──────────────────────────────────────────────────────────────────
+// DHT22 Settings
+#define DHT_TYPE DHT11
 DHT dht(DHT_PIN, DHT_TYPE);
-HardwareSerial sim800(1);
 
-enum ConnMethod { CONN_NONE, CONN_WIFI, CONN_GSM };
+WiFiClient espClient;
+PubSubClient client(espClient);
 
-// ─── Function Declarations ────────────────────────────────────────────────────
-bool     readSensor(float &temp, float &hum);
-ConnMethod connectivity_init();
-bool     wifi_connect(const char *ssid, const char *pass);
-bool     gsm_init();
-bool     gsm_gprs_connect();
-bool     http_post_wifi(const char *payload);
-bool     http_post_gsm(const char *payload);
-String   http_get_wifi(const char *url);
-String   http_get_gsm(const char *path);
-bool     gsm_send_at(const char *cmd, const char *expected, unsigned long timeout_ms);
-String   gsm_send_at_resp(const char *cmd, unsigned long timeout_ms);
-String   build_payload(float temp, float hum);
-void     process_command(const String &body);
-void     dryer_set(bool on);
-void     go_sleep();
+// Tracks last publish time (non-blocking interval via millis())
+unsigned long lastPublishMs = 0;
 
-// ─── Setup ────────────────────────────────────────────────────────────────────
+// ==========================================
+// 2. HELPER FUNCTIONS
+// ==========================================
+
+void statusBlink(int count, int speedMs) {
+  for (int i = 0; i < count; i++) {
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(speedMs);
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(speedMs);
+  }
+}
+
+// ─── Wi-Fi Connection ────────────────────────────────────────────────────────
+// Blocks until Wi-Fi is established. In continuous-loop mode this is only
+// called once at startup; reconnection is handled by the OS TCP stack.
+void connectWiFi() {
+  Serial.print(F("[WIFI] Connecting to "));
+  Serial.println(ssid);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(F("."));
+  }
+  Serial.println();
+  Serial.print(F("[WIFI] Connected. IP: "));
+  Serial.println(WiFi.localIP());
+  statusBlink(2, 200);
+}
+
+// ─── MQTT Reconnect
+// ─────────────────────────────────────────────────────────── Called from
+// loop() whenever the broker connection drops. Retries indefinitely with a
+// 2-second backoff.
+void reconnectMQTT() {
+  while (!client.connected()) {
+    Serial.print(F("[MQTT] Connecting to broker..."));
+
+    // For anonymous broker (allow_anonymous true in mosquitto.conf):
+    bool connected = client.connect(NODE_ID);
+
+    // ── Uncomment below when MQTT auth is enabled (production)
+    // ──────────────── const char *mqtt_user = "smartstua_node"; const char
+    // *mqtt_pass = "your_mqtt_password"; bool connected =
+    // client.connect(NODE_ID, mqtt_user, mqtt_pass);
+
+    if (connected) {
+      Serial.println(F(" Connected!"));
+      statusBlink(2, 300);
+
+      // ── Subscribe to command topic for dryer control ───────────────────────
+      char cmd_topic[64];
+      snprintf(cmd_topic, sizeof(cmd_topic), "nodes/%s/commands", NODE_ID);
+      client.subscribe(cmd_topic, 1);
+      Serial.print(F("[MQTT] Subscribed to: "));
+      Serial.println(cmd_topic);
+    } else {
+      Serial.print(F(" failed. rc="));
+      Serial.print(client.state());
+      Serial.println(F(" — retrying in 2s"));
+      delay(2000);
+    }
+  }
+}
+
+// ─── Command Callback
+// ───────────────────────────────────────────────────────── Called when a
+// message arrives on nodes/<NODE_ID>/commands. The backend publishes "ON" or
+// "OFF" to control the grain dryer.
+void commandCallback(char *topic, byte *payload, unsigned int length) {
+  String cmd = "";
+  for (unsigned int i = 0; i < length; i++) {
+    cmd += (char)payload[i];
+  }
+  cmd.trim();
+
+  Serial.print(F("[CMD] Received dryer command: "));
+  Serial.println(cmd);
+
+  if (cmd == "ON") {
+    // TODO: activate dryer relay on GPIO pin
+    Serial.println(F("[CMD] Dryer relay → ON"));
+    statusBlink(3, 100);
+  } else if (cmd == "OFF") {
+    // TODO: deactivate dryer relay
+    Serial.println(F("[CMD] Dryer relay → OFF"));
+    statusBlink(1, 500);
+  }
+}
+
+// ==========================================
+// 3. SETUP — runs once on power-on / reset
+// ==========================================
 void setup() {
   Serial.begin(115200);
-  delay(200);
-  Serial.println(F("\n=============================================="));
-  Serial.println(F("  Smart-Stua Node v2.0 — Dual Connectivity"));
-  Serial.println(F("  Node: " NODE_ID));
-  Serial.println(F("=============================================="));
-
-  pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW);
-
-  // 1. Read sensor
-  float temperature, humidity;
-  if (!readSensor(temperature, humidity)) {
-    Serial.println(F("[FATAL] Sensor failed — sleeping"));
-    go_sleep();
-    return;
-  }
-  Serial.printf("[SENSOR] Temp=%.2f°C  Humidity=%.2f%%\n", temperature, humidity);
-
-  // 2. Establish connectivity (WiFi preferred, GSM fallback)
-  ConnMethod conn = connectivity_init();
-  if (conn == CONN_NONE) {
-    Serial.println(F("[ERROR] No connectivity available — sleeping"));
-    go_sleep();
-    return;
-  }
-
-  // 3. Build JSON payload
-  String payload = build_payload(temperature, humidity);
-  Serial.println(F("[HTTP] Sending reading..."));
-  Serial.println(payload);
-
-  // 4. POST reading
-  bool posted = (conn == CONN_WIFI)
-    ? http_post_wifi(payload.c_str())
-    : http_post_gsm(payload.c_str());
-
-  Serial.printf("[HTTP] POST %s\n", posted ? "OK" : "FAILED");
-
-  // 5. Poll for dryer command
-  Serial.println(F("[HTTP] Polling for dryer command..."));
-  String cmd_body = (conn == CONN_WIFI)
-    ? http_get_wifi(COMMAND_URL)
-    : http_get_gsm(COMMAND_PATH);
-
-  if (cmd_body.length() > 0) {
-    process_command(cmd_body);
-  }
-
-  // 6. Sleep
-  go_sleep();
-}
-
-void loop() { /* Deep sleep handles timing */ }
-
-// ─── Sensor Read ──────────────────────────────────────────────────────────────
-bool readSensor(float &temp, float &hum) {
-  dht.begin();
-  delay(2500);  // DHT22 warm-up
-
-  for (int attempt = 0; attempt < 3; attempt++) {
-    temp = dht.readTemperature();
-    hum  = dht.readHumidity();
-    if (!isnan(temp) && !isnan(hum) &&
-        temp >= -40.0 && temp <= 80.0 &&
-        hum  >=   0.0 && hum  <= 100.0) {
-      return true;
-    }
-    Serial.printf("[SENSOR] Read attempt %d failed — retrying...\n", attempt + 1);
-    delay(2000);
-  }
-  return false;
-}
-
-// ─── Connectivity Init ────────────────────────────────────────────────────────
-ConnMethod connectivity_init() {
-  // Try WiFi first (primary)
-  Serial.println(F("\n[NET] Trying WiFi (primary)..."));
-  if (wifi_connect(WIFI_SSID_1, WIFI_PASS_1)) {
-    Serial.println(F("[NET] ✓ Connected via WiFi"));
-    return CONN_WIFI;
-  }
-
-  // Try secondary WiFi (if configured)
-  if (strlen(WIFI_SSID_2) > 0) {
-    Serial.println(F("[NET] Trying WiFi (secondary)..."));
-    if (wifi_connect(WIFI_SSID_2, WIFI_PASS_2)) {
-      Serial.println(F("[NET] ✓ Connected via secondary WiFi"));
-      return CONN_WIFI;
-    }
-  }
-
-  // Fall back to GSM/GPRS
-  Serial.println(F("[NET] WiFi unavailable — falling back to SIM800L GSM"));
-  sim800.begin(9600, SERIAL_8N1, SIM800_RX, SIM800_TX);
-  delay(1000);
-
-  if (gsm_init() && gsm_gprs_connect()) {
-    Serial.println(F("[NET] ✓ Connected via GSM/GPRS"));
-    return CONN_GSM;
-  }
-
-  Serial.println(F("[NET] ✗ All connectivity methods failed"));
-  return CONN_NONE;
-}
-
-// ─── WiFi Connection ──────────────────────────────────────────────────────────
-bool wifi_connect(const char *ssid, const char *pass) {
-  if (!ssid || strlen(ssid) == 0) return false;
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, pass);
-
-  Serial.printf("[WiFi] Connecting to '%s'", ssid);
-  unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED) {
-    if (millis() - start > WIFI_TIMEOUT_MS) {
-      Serial.println(F(" TIMEOUT"));
-      WiFi.disconnect(true);
-      return false;
-    }
-    delay(500);
-    Serial.print('.');
-  }
-  Serial.printf(" OK — IP: %s\n", WiFi.localIP().toString().c_str());
-  return true;
-}
-
-// ─── HTTP POST via WiFi ───────────────────────────────────────────────────────
-bool http_post_wifi(const char *payload) {
-  HTTPClient http;
-  http.begin(READINGS_URL);
-  http.addHeader("Content-Type", "application/json");
-  http.setTimeout(HTTP_TIMEOUT_MS);
-
-  int code = http.POST(payload);
-  http.end();
-
-  Serial.printf("[WiFi HTTP] POST status: %d\n", code);
-  return (code == 200 || code == 201);
-}
-
-// ─── HTTP GET via WiFi ────────────────────────────────────────────────────────
-String http_get_wifi(const char *url) {
-  HTTPClient http;
-  http.begin(url);
-  http.setTimeout(HTTP_TIMEOUT_MS);
-
-  int code = http.GET();
-  String body = "";
-  if (code > 0) body = http.getString();
-  http.end();
-
-  Serial.printf("[WiFi HTTP] GET status: %d\n", code);
-  return body;
-}
-
-// ─── GSM Init ─────────────────────────────────────────────────────────────────
-bool gsm_init() {
-  Serial.println(F("[GSM] Initialising SIM800L..."));
-  for (int i = 0; i < 5; i++) {
-    if (gsm_send_at("AT", "OK", 2000)) {
-      gsm_send_at("ATE0", "OK", 2000);
-      gsm_send_at("AT+CMEE=2", "OK", 2000);
-      break;
-    }
-    if (i == 4) return false;
-    delay(1000);
-  }
-
-  // Wait for network registration
-  for (int i = 0; i < 30; i++) {
-    String r = gsm_send_at_resp("AT+CREG?", 3000);
-    if (r.indexOf("+CREG: 0,1") != -1 || r.indexOf("+CREG: 0,5") != -1) {
-      Serial.println(F("[GSM] Network registered"));
-      return true;
-    }
-    Serial.printf("[GSM] Registering... %d/30\n", i + 1);
-    delay(2000);
-  }
-  return false;
-}
-
-// ─── GPRS Connect ─────────────────────────────────────────────────────────────
-bool gsm_gprs_connect() {
-  Serial.printf("[GPRS] Connecting with APN: %s\n", GSM_APN);
-  gsm_send_at("AT+SAPBR=3,1,\"Contype\",\"GPRS\"", "OK", 5000);
-  String cmd = "AT+SAPBR=3,1,\"APN\",\"";
-  cmd += GSM_APN; cmd += "\"";
-  gsm_send_at(cmd.c_str(), "OK", 5000);
-  gsm_send_at("AT+SAPBR=1,1", "OK", 30000);
-  String s = gsm_send_at_resp("AT+SAPBR=2,1", 5000);
-  if (s.indexOf(",1,") != -1) { Serial.println(F("[GPRS] Connected")); return true; }
-  return false;
-}
-
-// ─── HTTP POST via GSM ────────────────────────────────────────────────────────
-bool http_post_gsm(const char *payload) {
-  gsm_send_at("AT+HTTPINIT", "OK", 5000);
-  gsm_send_at("AT+HTTPPARA=\"CID\",1", "OK", 3000);
-
-  String url = "AT+HTTPPARA=\"URL\",\"http://";
-  url += SERVER_HOST; url += READINGS_PATH; url += "\"";
-  gsm_send_at(url.c_str(), "OK", 5000);
-  gsm_send_at("AT+HTTPPARA=\"CONTENT\",\"application/json\"", "OK", 3000);
-
-  String dl = "AT+HTTPDATA="; dl += strlen(payload); dl += ",10000";
-  gsm_send_at(dl.c_str(), "DOWNLOAD", 5000);
-  sim800.print(payload);
   delay(500);
+  pinMode(LED_BUILTIN, OUTPUT);
+  dht.begin();
 
-  gsm_send_at("AT+HTTPACTION=1", "+HTTPACTION:", HTTP_TIMEOUT_MS);
-  String st = gsm_send_at_resp("AT+HTTPSTATUS", 3000);
-  gsm_send_at("AT+HTTPTERM", "OK", 3000);
-  return st.indexOf(",200,") != -1 || st.indexOf(",201,") != -1;
+  // Build the MQTT topic string dynamically from NODE_ID
+  snprintf(mqtt_topic, sizeof(mqtt_topic), "nodes/%s/telemetry", NODE_ID);
+
+  Serial.println(F("\n[SYSTEM] Smart-Stua Node starting (real-time mode)"));
+  Serial.print(F("[SYSTEM] Publishing to topic: "));
+  Serial.println(mqtt_topic);
+
+  connectWiFi();
+
+  client.setServer(mqtt_server, mqtt_port);
+  client.setCallback(commandCallback);
+
+  Serial.println(F("[SYSTEM] Real-time streaming mode active."));
 }
 
-// ─── HTTP GET via GSM ─────────────────────────────────────────────────────────
-String http_get_gsm(const char *path) {
-  gsm_send_at("AT+HTTPINIT", "OK", 5000);
-  gsm_send_at("AT+HTTPPARA=\"CID\",1", "OK", 3000);
-  String url = "AT+HTTPPARA=\"URL\",\"http://";
-  url += SERVER_HOST; url += path; url += "\"";
-  gsm_send_at(url.c_str(), "OK", 5000);
-  gsm_send_at("AT+HTTPACTION=0", "+HTTPACTION:", HTTP_TIMEOUT_MS);
-  String r = gsm_send_at_resp("AT+HTTPREAD", 5000);
-  gsm_send_at("AT+HTTPTERM", "OK", 3000);
-  return r;
-}
-
-// ─── AT Command Helpers ───────────────────────────────────────────────────────
-bool gsm_send_at(const char *cmd, const char *expected, unsigned long timeout_ms) {
-  sim800.println(cmd);
-  unsigned long start = millis();
-  String buf = "";
-  while (millis() - start < timeout_ms) {
-    while (sim800.available()) buf += (char)sim800.read();
-    if (buf.indexOf(expected) != -1) return true;
+// ==========================================
+// 4. MAIN LOOP — reads and publishes every READ_INTERVAL_MS
+// ==========================================
+void loop() {
+  // ── Maintain MQTT connection
+  // ────────────────────────────────────────────────
+  if (!client.connected()) {
+    reconnectMQTT();
   }
-  return false;
-}
+  // Must be called regularly to process incoming messages (commands)
+  client.loop();
 
-String gsm_send_at_resp(const char *cmd, unsigned long timeout_ms) {
-  sim800.println(cmd);
-  unsigned long start = millis();
-  String buf = "";
-  while (millis() - start < timeout_ms) {
-    while (sim800.available()) buf += (char)sim800.read();
+  // ── Non-blocking publish interval ──────────────────────────────────────────
+  unsigned long now = millis();
+  if (now - lastPublishMs >= READ_INTERVAL_MS) {
+    lastPublishMs = now;
+
+    // Read sensors
+    float temp = dht.readTemperature();
+    float hum = dht.readHumidity();
+    int rawMoist = analogRead(MOISTURE_PIN);
+    // Moisture Calibration: capacitive & analog sensors output HIGH voltage
+    // when dry, LOW when wet. Adjust DRY_ADC and WET_ADC based on your serial
+    // monitor readings if needed.
+    const int DRY_ADC = 3500; // Raw ADC value in open air (0% moisture)
+    const int WET_ADC =
+        1200; // Raw ADC value submerged in water (100% moisture)
+
+    // Map the raw value to a percentage (0% to 100%) and constrain it
+    float moistPct = map(rawMoist, DRY_ADC, WET_ADC, 0, 100);
+    moistPct = constrain(moistPct, 0.0f, 100.0f);
+
+    Serial.printf("[SENSOR] T=%.1f°C  H=%.1f%%  Moist=%.1f%%\n", temp, hum,
+                  moistPct);
+
+    // Skip publish on DHT22 read error
+    if (isnan(temp) || isnan(hum)) {
+      Serial.println(F("[SENSOR] DHT22 read error — skipping publish"));
+      statusBlink(3, 100);
+      return;
+    }
+
+    // Build JSON payload (field names match SensorPayloadSerializer)
+#if ARDUINOJSON_VERSION_MAJOR >= 7
+    JsonDocument doc;
+#else
+    StaticJsonDocument<256> doc;
+#endif
+    doc["node_id"] = NODE_ID;
+    doc["temperature"] = temp;
+    doc["humidity"] = hum;
+    doc["moisture_pct"] = moistPct;
+    doc["api_key"] = API_KEY;
+
+    char buffer[256];
+    serializeJson(doc, buffer);
+
+    // Publish with QOS-0 (fire-and-forget; QOS-1 needs persistent session)
+    if (client.publish(mqtt_topic, buffer, false)) {
+      Serial.println(F("[MQTT] Published successfully"));
+      statusBlink(1, 150);
+    } else {
+      Serial.println(F("[MQTT] Publish failed"));
+      statusBlink(5, 100);
+    }
   }
-  return buf;
-}
-
-// ─── Payload Builder ──────────────────────────────────────────────────────────
-String build_payload(float temp, float hum) {
-  String j = "{";
-  j += "\"node_id\":\"" NODE_ID "\",";
-  j += "\"temperature\":" + String(temp, 2) + ",";
-  j += "\"humidity\":"    + String(hum,  2) + ",";
-  j += "\"api_key\":\"" API_KEY "\"";
-  j += "}";
-  return j;
-}
-
-// ─── Dryer Command ────────────────────────────────────────────────────────────
-void process_command(const String &body) {
-  if (body.indexOf("\"ON\"") != -1) {
-    Serial.println(F("[DRYER] → ON"));
-    dryer_set(true);
-  } else if (body.indexOf("\"OFF\"") != -1) {
-    Serial.println(F("[DRYER] → OFF"));
-    dryer_set(false);
-  } else {
-    Serial.println(F("[DRYER] No pending command"));
-  }
-}
-
-void dryer_set(bool on) {
-  digitalWrite(RELAY_PIN, on ? HIGH : LOW);
-  Serial.printf("[RELAY] Dryer %s\n", on ? "ACTIVATED" : "DEACTIVATED");
-}
-
-// ─── Deep Sleep ───────────────────────────────────────────────────────────────
-void go_sleep() {
-  Serial.printf("[SLEEP] Deep sleep for %d min...\n", SLEEP_MINUTES);
-  Serial.flush();
-  WiFi.disconnect(true);
-  WiFi.mode(WIFI_OFF);
-  // Put SIM800L to sleep if it was used
-  sim800.println("AT+CSCLK=2");
-  esp_sleep_enable_timer_wakeup(SLEEP_US);
-  esp_deep_sleep_start();
 }

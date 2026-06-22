@@ -1,6 +1,8 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 # Smart-Stua — Master Docker Compose
 # Usage: docker compose up -d --build
+# Note: For local development without Nginx/Certbot, temporarily comment out
+#       the nginx and certbot services and expose backend port 8000 directly.
 # ═══════════════════════════════════════════════════════════════════════════════
 
 services:
@@ -25,7 +27,7 @@ services:
       retries: 5
       start_period: 30s
 
-  # ── Redis 7 (Celery broker + result backend) ─────────────────────────────────
+  # ── Redis 7 ──────────────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: smartstua_redis
@@ -42,8 +44,6 @@ services:
       retries: 5
 
   # ── Eclipse Mosquitto 2 (MQTT Broker) ────────────────────────────────────────
-  # Exposed on host port 1883 so physical ESP32 nodes on the LAN can connect.
-  # All other services (backend, bridge) connect via Docker's internal network.
   mosquitto:
     image: eclipse-mosquitto:2
     container_name: smartstua_mosquitto
@@ -52,18 +52,22 @@ services:
       - "${MQTT_PORT:-1883}:1883"
     volumes:
       - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/config/passwd:/mosquitto/config/passwd:ro
+      - ./mosquitto/config/acl:/mosquitto/config/acl:ro
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
     networks:
       - internal
     healthcheck:
-      test: ["CMD-SHELL", "mosquitto_pub -h 127.0.0.1 -p 1883 -t health/check -m ping --quiet && echo ok"]
+      test: ["CMD-SHELL", "mosquitto_pub -h 127.0.0.1 -p 1883 -u ${MQTT_USERNAME:-bridge} -P ${MQTT_PASSWORD:-changeme} -t health/check -m ping --quiet && echo ok"]
       interval: 20s
       timeout: 10s
       retries: 3
       start_period: 10s
 
-  # ── Django / Gunicorn (REST API) ─────────────────────────────────────────────
+  # ── Django / Gunicorn ─────────────────────────────────────────────────────────
+  # SECURITY: Port 8000 is NOT exposed to the host in production.
+  # All traffic comes through the Nginx service on ports 80/443.
   backend:
     build:
       context: ./backend
@@ -81,8 +85,6 @@ services:
       REDIS_URL:     redis://redis:6379/0
       MQTT_BROKER:   mosquitto
       MQTT_PORT:     "1883"
-    ports:
-      - "${BACKEND_PORT:-8000}:8000"
     volumes:
       - static_files:/app/staticfiles
       - backend_logs:/app/logs
@@ -102,7 +104,49 @@ services:
       retries: 3
       start_period: 60s
 
-  # ── Celery Worker (async task processing: ARI, alerts, push) ─────────────────
+  # ── Nginx Reverse Proxy + TLS ─────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: smartstua_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/proxy_params:/etc/nginx/proxy_params:ro
+      - static_files:/app/staticfiles:ro
+      - certbot_webroot:/var/www/certbot:ro
+      - letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - internal
+
+  # ── Certbot (Let's Encrypt auto-renewal) ──────────────────────────────────────
+  # First-time cert issuance (run once before starting nginx):
+  #   docker compose run --rm certbot certonly --webroot \
+  #     --webroot-path=/var/www/certbot \
+  #     -d smartstua-backend.onrender.com \
+  #     --email raphaelocitti@gmail.com --agree-tos --no-eff-email
+  certbot:
+    image: certbot/certbot:latest
+    container_name: smartstua_certbot
+    restart: on-failure
+    volumes:
+      - certbot_webroot:/var/www/certbot
+      - letsencrypt:/etc/letsencrypt
+    entrypoint: >
+      /bin/sh -c "
+        trap exit TERM;
+        while :; do
+          certbot renew --webroot --webroot-path=/var/www/certbot --quiet;
+          sleep 12h & wait $${!};
+        done
+      "
+
+  # ── Celery Worker ─────────────────────────────────────────────────────────────
   celery_worker:
     build:
       context: ./backend
@@ -136,7 +180,7 @@ services:
     networks:
       - internal
 
-  # ── Celery Beat (periodic scheduler: offline checks, cumulative ARI) ──────────
+  # ── Celery Beat ───────────────────────────────────────────────────────────────
   celery_beat:
     build:
       context: ./backend
@@ -169,7 +213,7 @@ services:
     networks:
       - internal
 
-  # ── MQTT Bridge (subscribes to node topics → persists readings via Django ORM)
+  # ── MQTT Bridge ────────────────────────────────────────────────────────────────
   mqtt_bridge:
     build:
       context: ./backend
@@ -218,12 +262,17 @@ volumes:
     driver: local
   backend_logs:
     driver: local
+  certbot_webroot:
+    driver: local
+  letsencrypt:
+    driver: local
 
 
 # ── Networks ──────────────────────────────────────────────────────────────────
-# "internal" network: all services communicate here.
-# DB and Redis have NO exposed ports — only reachable inside Docker.
-# Mosquitto port 1883 and backend port 8000 are exposed to the host/LAN.
+# "internal" network: all inter-service communication.
+# DB and Redis: NO exposed ports (internal only).
+# Mosquitto: port 1883 exposed for ESP32 LAN nodes.
+# Nginx: ports 80/443 are the ONLY public entry points.
 networks:
   internal:
     driver: bridge

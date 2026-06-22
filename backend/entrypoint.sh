@@ -86,4 +86,15 @@ PYEOF
 fi
 
 echo "🚀  Starting: $*"
-exec "$@"
+# Use $PORT if set by Render.com; fall back to 8000 for local Docker
+if [[ "${1:-}" == "gunicorn" ]]; then
+  exec gunicorn smartstua.wsgi:application \
+    --bind "0.0.0.0:${PORT:-8000}" \
+    --workers "${WEB_CONCURRENCY:-2}" \
+    --threads 2 \
+    --timeout 120 \
+    --access-logfile - \
+    --error-logfile -
+else
+  exec "$@"
+fi

@@ -1,0 +1,163 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Smart-Stua — Render.com Infrastructure Blueprint
+#
+# Usage: Connect your GitHub repo to Render.com and point it at this file.
+#   1. Go to https://dashboard.render.com/
+#   2. Click "New" → "Blueprint"
+#   3. Select your GitHub repo → Render detects this render.yaml automatically
+#
+# Services provisioned:
+#   - Web Service  : smartstua-backend  (Django + Gunicorn via Docker)
+#   - Worker       : smartstua-celery   (Celery worker, same image)
+#   - PostgreSQL   : smartstua-db       (Managed, automatic backups)
+#   - Redis        : smartstua-redis    (Managed)
+#
+# NOTE: MQTT (Mosquitto) is NOT on Render — use HiveMQ Cloud free tier.
+#   Sign up at: https://www.hivemq.com/mqtt-cloud-broker/
+#   Set MQTT_BROKER, MQTT_PORT, MQTT_USERNAME, MQTT_PASSWORD in env vars below.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+databases:
+  - name: smartstua-db
+    databaseName: smartstua_db
+    user: smartstua
+    plan: free               # Upgrade to starter ($7/mo) for persistent storage
+    region: oregon
+
+services:
+
+  # ── Managed Redis ─────────────────────────────────────────────────────────────
+  - type: redis
+    name: smartstua-redis
+    plan: free
+    region: oregon
+    maxmemoryPolicy: allkeys-lru
+
+  # ── Django Web Service ────────────────────────────────────────────────────────
+  - type: web
+    name: smartstua-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: "gunicorn smartstua.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 120"
+    plan: free               # free tier: 512 MB RAM, spins down after 15 min idle
+    region: oregon
+    healthCheckPath: /api/health/
+    autoDeploy: true         # Auto-deploy on push to main branch
+
+    envVars:
+      # Django core
+      - key: DEBUG
+        value: "False"
+      - key: SECRET_KEY
+        generateValue: true  # Render auto-generates a secure random value
+      - key: ALLOWED_HOSTS
+        value: "smartstua-backend.onrender.com"
+      - key: CORS_ALLOWED_ORIGINS
+        value: "https://smartstua-backend.onrender.com"
+
+      # Database — Render injects DATABASE_URL automatically from the linked DB
+      - key: DATABASE_URL
+        fromDatabase:
+          name: smartstua-db
+          property: connectionString
+
+      # Redis — Render injects REDIS_URL automatically from the linked Redis
+      - key: REDIS_URL
+        fromService:
+          name: smartstua-redis
+          type: redis
+          property: connectionString
+
+      # MQTT — HiveMQ Cloud (fill in after signing up at hivemq.com)
+      - key: MQTT_BROKER
+        sync: false          # Set manually in Render dashboard
+      - key: MQTT_PORT
+        value: "8883"        # HiveMQ Cloud uses TLS on 8883
+      - key: MQTT_USERNAME
+        sync: false
+      - key: MQTT_PASSWORD
+        sync: false
+
+      # Twilio SMS
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_PHONE_NUMBER
+        sync: false
+
+      # Admin seed credentials
+      - key: ADMIN_PHONE
+        value: "+256762038491"
+      - key: ADMIN_EMAIL
+        value: "raphaelocitti@gmail.com"
+      - key: ADMIN_DEFAULT_PASSWORD
+        sync: false
+
+      # Gunicorn workers (Render sets $PORT automatically)
+      - key: WEB_CONCURRENCY
+        value: "2"
+
+  # ── Celery Worker ─────────────────────────────────────────────────────────────
+  - type: worker
+    name: smartstua-celery
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: "celery -A smartstua worker --loglevel=info --concurrency=2"
+    plan: free
+    region: oregon
+
+    envVars:
+      - key: DEBUG
+        value: "False"
+      - key: SECRET_KEY
+        fromService:
+          name: smartstua-backend
+          type: web
+          envVarKey: SECRET_KEY
+      - key: DATABASE_URL
+        fromDatabase:
+          name: smartstua-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: smartstua-redis
+          type: redis
+          property: connectionString
+      - key: MQTT_BROKER
+        fromService:
+          name: smartstua-backend
+          type: web
+          envVarKey: MQTT_BROKER
+      - key: MQTT_PORT
+        fromService:
+          name: smartstua-backend
+          type: web
+          envVarKey: MQTT_PORT
+      - key: MQTT_USERNAME
+        fromService:
+          name: smartstua-backend
+          type: web
+          envVarKey: MQTT_USERNAME
+      - key: MQTT_PASSWORD
+        fromService:
+          name: smartstua-backend
+          type: web
+          envVarKey: MQTT_PASSWORD
+      - key: TWILIO_ACCOUNT_SID
+        fromService:
+          name: smartstua-backend
+          type: web
+          envVarKey: TWILIO_ACCOUNT_SID
+      - key: TWILIO_AUTH_TOKEN
+        fromService:
+          name: smartstua-backend
+          type: web
+          envVarKey: TWILIO_AUTH_TOKEN
+      - key: TWILIO_PHONE_NUMBER
+        fromService:
+          name: smartstua-backend
+          type: web
+          envVarKey: TWILIO_PHONE_NUMBER

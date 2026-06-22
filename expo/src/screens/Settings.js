@@ -12,11 +12,23 @@ import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
   StyleSheet, SafeAreaView, Alert, ActivityIndicator, useWindowDimensions,
+  Clipboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { fetchDeviceList, fetchThresholds, updateThresholds, setBaseUrl, clearAuthToken } from '../api';
+import {
+  fetchDeviceList,
+  fetchThresholds,
+  updateThresholds,
+  setBaseUrl,
+  clearAuthToken,
+  registerDevice,
+  updateDevice,
+  deleteDevice,
+  rotateApiKey,
+  fetchDeviceDetail
+} from '../api';
 
 const C = {
   bg:      '#0A0F1E',
@@ -46,6 +58,128 @@ export default function SettingsScreen() {
   const [minHum, setMinHum]             = useState('');
   const [maxHum, setMaxHum]             = useState('');
   const [riskDuration, setRiskDuration] = useState('');
+
+  // Node management states
+  const [registerFormVisible, setRegisterFormVisible] = useState(false);
+  const [newNodeIdentifier, setNewNodeIdentifier] = useState('');
+  const [newLocationLabel, setNewLocationLabel] = useState('');
+  const [newMacAddress, setNewMacAddress] = useState('');
+  const [newNotes, setNewNotes] = useState('');
+  const [provisioningData, setProvisioningData] = useState(null);
+  const [editingNode, setEditingNode] = useState(null);
+  const [isRefreshingNodes, setIsRefreshingNodes] = useState(false);
+
+  const refreshNodes = async () => {
+    setIsRefreshingNodes(true);
+    try {
+      const data = await fetchDeviceList();
+      const list = Array.isArray(data) ? data : [];
+      setNodes(list);
+    } catch (err) {
+      console.error('[Settings] Refresh nodes failed:', err.message);
+    } finally {
+      setIsRefreshingNodes(false);
+    }
+  };
+
+  const handleRegisterNode = async () => {
+    if (!newNodeIdentifier || !newLocationLabel) {
+      Alert.alert('Error', 'Node Identifier and Location Label are required.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = {
+        node_identifier: newNodeIdentifier,
+        location_label: newLocationLabel,
+        mac_address: newMacAddress,
+        notes: newNotes,
+      };
+      const response = await registerDevice(payload);
+      setProvisioningData(response);
+      setNewNodeIdentifier('');
+      setNewLocationLabel('');
+      setNewMacAddress('');
+      setNewNotes('');
+      setRegisterFormVisible(false);
+      await refreshNodes();
+      Alert.alert('Success', 'Node registered successfully!');
+    } catch (err) {
+      Alert.alert('Registration Error', err.response?.data ? JSON.stringify(err.response.data) : err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleUpdateNode = async (node) => {
+    setSaving(true);
+    try {
+      await updateDevice(node.node_id, {
+        location_label: node.location_label,
+        mac_address: node.mac_address,
+        notes: node.notes,
+        status: node.status,
+      });
+      setEditingNode(null);
+      await refreshNodes();
+      Alert.alert('Success', 'Node updated successfully!');
+    } catch (err) {
+      Alert.alert('Update Error', err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteNode = (node) => {
+    Alert.alert(
+      'Deactivate Node',
+      `Are you sure you want to deactivate ${node.node_identifier}? It will be soft-deleted (historical data will remain).`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Deactivate',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteDevice(node.node_id);
+              await refreshNodes();
+              Alert.alert('Deactivated', `Node ${node.node_identifier} is now inactive.`);
+            } catch (err) {
+              Alert.alert('Deactivation Error', err.message);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleRotateKey = (node) => {
+    Alert.alert(
+      'Rotate API Key',
+      `Warning: Rotated API keys cannot be recovered. You must update your hardware firmware config immediately. Continue?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Rotate',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const res = await rotateApiKey(node.node_id);
+              setProvisioningData(res);
+              Alert.alert('Rotated', 'New API Key generated successfully!');
+            } catch (err) {
+              Alert.alert('Rotation Error', err.message);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const copyToClipboard = (text) => {
+    Clipboard.setString(text);
+    Alert.alert('Copied', 'Config copied to clipboard!');
+  };
 
   useEffect(() => { loadInitial(); }, []);
 
@@ -135,6 +269,165 @@ export default function SettingsScreen() {
             <Text style={styles.saveBtnText}>Save URL</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Node Registration & Management (Feature 2) */}
+        <SectionHeader icon="hardware-chip-outline" title="Node Management" />
+        <View style={styles.card}>
+          <View style={styles.nodeHeaderRow}>
+            <Text style={styles.fieldLabel}>Registered Nodes</Text>
+            <TouchableOpacity onPress={refreshNodes} style={styles.iconBtn}>
+              <Ionicons name="refresh-outline" size={16} color={C.primary} />
+            </TouchableOpacity>
+          </View>
+
+          {isRefreshingNodes ? (
+            <ActivityIndicator color={C.primary} style={{ marginVertical: 12 }} />
+          ) : nodes.length === 0 ? (
+            <Text style={styles.noData}>No devices registered. Add one below.</Text>
+          ) : (
+            nodes.map(node => (
+              <View key={node.node_id} style={styles.nodeListItem}>
+                <View style={styles.nodeListInfo}>
+                  <View style={styles.nodeNameRow}>
+                    <View style={[styles.statusDot, { backgroundColor: node.is_online ? '#00D26A' : '#FF3B30' }]} />
+                    <Text style={styles.nodeNameText}>{node.node_identifier}</Text>
+                  </View>
+                  <Text style={styles.nodeLocText}>{node.location_label || 'No Location'}</Text>
+                </View>
+                <View style={styles.nodeActionRow}>
+                  <TouchableOpacity onPress={() => setEditingNode(node)} style={styles.actionBtn}>
+                    <Ionicons name="create-outline" size={18} color="#0A84FF" />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleRotateKey(node)} style={styles.actionBtn}>
+                    <Ionicons name="key-outline" size={18} color="#FF9500" />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleDeleteNode(node)} style={styles.actionBtn}>
+                    <Ionicons name="trash-outline" size={18} color="#FF3B30" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          )}
+
+          {/* Edit Node Section */}
+          {editingNode && (
+            <View style={styles.editContainer}>
+              <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Edit Node: {editingNode.node_identifier}</Text>
+              <TextInput
+                style={styles.input}
+                value={editingNode.location_label}
+                onChangeText={(text) => setEditingNode({ ...editingNode, location_label: text })}
+                placeholder="Location Label"
+                placeholderTextColor={C.subtext}
+              />
+              <TextInput
+                style={styles.input}
+                value={editingNode.mac_address}
+                onChangeText={(text) => setEditingNode({ ...editingNode, mac_address: text })}
+                placeholder="MAC Address (Optional)"
+                placeholderTextColor={C.subtext}
+              />
+              <TextInput
+                style={styles.input}
+                value={editingNode.notes}
+                onChangeText={(text) => setEditingNode({ ...editingNode, notes: text })}
+                placeholder="Notes (Optional)"
+                placeholderTextColor={C.subtext}
+              />
+              <View style={styles.btnRow}>
+                <TouchableOpacity style={[styles.saveBtn, { flex: 1, backgroundColor: '#1E293B', borderColor: '#4A5568' }]} onPress={() => setEditingNode(null)}>
+                  <Text style={[styles.saveBtnText, { color: C.text }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.saveBtn, { flex: 1 }]} onPress={() => handleUpdateNode(editingNode)}>
+                  <Text style={styles.saveBtnText}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* Toggle Register Form Button */}
+          {!registerFormVisible && !editingNode && (
+            <TouchableOpacity style={styles.registerToggleBtn} onPress={() => setRegisterFormVisible(true)}>
+              <Ionicons name="add-circle-outline" size={18} color="#000" />
+              <Text style={styles.registerToggleBtnText}>Register New Node</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Registration Form */}
+          {registerFormVisible && (
+            <View style={styles.registerForm}>
+              <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Register New Node</Text>
+              <TextInput
+                style={styles.input}
+                value={newNodeIdentifier}
+                onChangeText={setNewNodeIdentifier}
+                placeholder="Node ID (e.g. NODE_003)"
+                placeholderTextColor={C.subtext}
+                autoCapitalize="characters"
+              />
+              <TextInput
+                style={styles.input}
+                value={newLocationLabel}
+                onChangeText={setNewLocationLabel}
+                placeholder="Location (e.g. Silo B)"
+                placeholderTextColor={C.subtext}
+              />
+              <TextInput
+                style={styles.input}
+                value={newMacAddress}
+                onChangeText={setNewMacAddress}
+                placeholder="MAC Address (Optional)"
+                placeholderTextColor={C.subtext}
+              />
+              <TextInput
+                style={styles.input}
+                value={newNotes}
+                onChangeText={setNewNotes}
+                placeholder="Notes (Optional)"
+                placeholderTextColor={C.subtext}
+              />
+              <View style={styles.btnRow}>
+                <TouchableOpacity style={[styles.saveBtn, { flex: 1, backgroundColor: '#1E293B', borderColor: '#4A5568' }]} onPress={() => setRegisterFormVisible(false)}>
+                  <Text style={[styles.saveBtnText, { color: C.text }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.saveBtn, { flex: 1 }]} onPress={handleRegisterNode}>
+                  <Text style={styles.saveBtnText}>Register</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* Provisioning Sheet (One-time pair info) */}
+        {provisioningData && (
+          <View style={styles.provisioningCard}>
+            <View style={styles.provisioningHeader}>
+              <Ionicons name="key" size={20} color={C.warning} />
+              <Text style={styles.provisioningTitle}>Device Provisioning Key</Text>
+            </View>
+            <Text style={styles.provisioningWarning}>
+              IMPORTANT: Copy this configuration. The API Key is generated dynamically and cannot be displayed again for security reasons.
+            </Text>
+            <View style={styles.keyBox}>
+              <Text style={styles.keyTextLabel}>API Key:</Text>
+              <Text style={styles.keyValue} selectable>{provisioningData.api_key}</Text>
+            </View>
+            {provisioningData.provisioning && (
+              <View style={styles.configDetails}>
+                <Text style={styles.configDetailText}><Text style={styles.bold}>MQTT Broker:</Text> {provisioningData.provisioning.mqtt_broker}</Text>
+                <Text style={styles.configDetailText}><Text style={styles.bold}>MQTT Port:</Text> {provisioningData.provisioning.mqtt_port}</Text>
+                <Text style={styles.configDetailText}><Text style={styles.bold}>MQTT Topic:</Text> {provisioningData.provisioning.mqtt_topic}</Text>
+              </View>
+            )}
+            <TouchableOpacity style={styles.copyBtn} onPress={() => copyToClipboard(JSON.stringify(provisioningData, null, 2))}>
+              <Ionicons name="copy-outline" size={16} color="#000" />
+              <Text style={styles.copyBtnText}>Copy Config JSON</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.closeBtn} onPress={() => setProvisioningData(null)}>
+              <Text style={styles.closeBtnText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Alert Thresholds */}
         <SectionHeader icon="thermometer-outline" title="Alert Thresholds" />
@@ -350,4 +643,37 @@ const styles = StyleSheet.create({
   legendAction:   { color: C.subtext, fontSize: 12, flex: 1 },
   logoutBtn:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.danger + '1A', borderWidth: 1, borderColor: C.danger + '40', borderRadius: 12, paddingVertical: 14 },
   logoutText:     { color: C.danger, fontSize: 15, fontWeight: '700' },
+  
+  // Node management styles
+  nodeHeaderRow:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  iconBtn:        { padding: 4 },
+  nodeListItem:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.border },
+  nodeListInfo:   { flex: 1 },
+  nodeNameRow:    { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statusDot:      { width: 8, height: 8, borderRadius: 4 },
+  nodeNameText:   { color: C.text, fontSize: 15, fontWeight: '700' },
+  nodeLocText:    { color: C.subtext, fontSize: 12, marginTop: 2 },
+  nodeActionRow:  { flexDirection: 'row', gap: 14 },
+  actionBtn:      { padding: 4 },
+  editContainer:  { gap: 8, paddingVertical: 8 },
+  btnRow:         { flexDirection: 'row', gap: 10, marginTop: 8 },
+  registerToggleBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.primary, borderRadius: 12, paddingVertical: 14, marginTop: 12 },
+  registerToggleBtnText: { color: '#000', fontSize: 15, fontWeight: '800' },
+  registerForm:   { gap: 8, paddingVertical: 8 },
+  
+  // Provisioning Sheet Styles
+  provisioningCard: { backgroundColor: C.card, borderRadius: 16, padding: 16, marginTop: 16, borderWidth: 1, borderColor: C.warning, gap: 10 },
+  provisioningHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  provisioningTitle: { fontSize: 15, fontWeight: '700', color: C.text },
+  provisioningWarning: { fontSize: 12, color: C.warning, lineHeight: 18 },
+  keyBox:         { backgroundColor: C.input, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: C.border, gap: 4 },
+  keyTextLabel:   { fontSize: 11, color: C.subtext, textTransform: 'uppercase', fontWeight: '600' },
+  keyValue:       { fontSize: 13, fontFamily: 'monospace', color: C.text, fontWeight: '700' },
+  configDetails:  { gap: 4, marginVertical: 4 },
+  configDetailText: { fontSize: 13, color: C.text },
+  bold:           { fontWeight: '700', color: C.subtext },
+  copyBtn:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.primary, borderRadius: 12, paddingVertical: 12 },
+  copyBtnText:    { color: '#000', fontSize: 14, fontWeight: '700' },
+  closeBtn:       { alignItems: 'center', justifyContent: 'center', backgroundColor: '#1E293B', borderRadius: 12, paddingVertical: 12, borderWidth: 1, borderColor: '#4A5568' },
+  closeBtnText:   { color: C.text, fontSize: 14, fontWeight: '700' },
 });

@@ -4,6 +4,7 @@ Covers all 5 models + SensorPayloadSerializer for incoming GSM node JSON.
 """
 
 from django.conf import settings
+from django.utils import timezone
 from rest_framework import serializers
 from .models import User, SensorNode, Reading, AlertLog, Threshold, DryerCommand
 
@@ -33,13 +34,20 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 # ─── SensorNode ───────────────────────────────────────────────────────────────
 class SensorNodeSerializer(serializers.ModelSerializer):
     latest_ari = serializers.SerializerMethodField()
+    is_online   = serializers.SerializerMethodField()
 
     class Meta:
         model  = SensorNode
         fields = ['node_id', 'node_identifier', 'location_label', 'mac_address',
-                  'gateway_id', 'api_key', 'status', 'last_reading_at',
+                  'gateway_id', 'api_key', 'status', 'last_reading_at', 'is_online',
                   'pending_command', 'installed_at', 'notes', 'latest_ari']
-        read_only_fields = ['node_id', 'api_key', 'last_reading_at', 'installed_at']
+        read_only_fields = ['node_id', 'api_key', 'last_reading_at', 'installed_at', 'is_online']
+
+    def get_is_online(self, obj):
+        """True if the node has sent a reading within the last 2 minutes."""
+        if not obj.last_reading_at:
+            return False
+        return (timezone.now() - obj.last_reading_at).total_seconds() < 120
 
     def get_latest_ari(self, obj):
         """Include latest ARI score in node listing response."""
@@ -145,20 +153,44 @@ class SensorPayloadSerializer(serializers.Serializer):
         return data
 
 
-# ─── Node Registration (dashboard → API) ───────────────────────────────────────
+# ─── Node Registration (dashboard → API) ──────────────────────────────────────────────────
 class NodeRegistrationSerializer(serializers.ModelSerializer):
     """
     Used by POST /api/devices/register/ — lets dashboard users register
     a new node without touching the admin panel or code.
-    api_key is returned once on creation (read_only thereafter).
+    api_key and provisioning are returned once on creation (read_only thereafter).
+    The node's owner is set to request.user by the view (not from request body).
     """
-    api_key = serializers.CharField(read_only=True)
+    api_key      = serializers.CharField(read_only=True)
+    provisioning = serializers.SerializerMethodField()
 
     class Meta:
         model  = SensorNode
         fields = ['node_id', 'node_identifier', 'location_label',
-                  'mac_address', 'notes', 'api_key']
+                  'mac_address', 'notes', 'api_key', 'provisioning']
         read_only_fields = ['node_id', 'api_key']
+
+    def create(self, validated_data):
+        """Owner is injected by the view via serializer.save(owner=user_obj)."""
+        return SensorNode.objects.create(**validated_data)
+
+    def get_provisioning(self, obj):
+        """Return everything a device needs to connect, shown once on registration."""
+        mqtt_host = getattr(settings, 'MQTT_BROKER', 'localhost')
+        mqtt_port = getattr(settings, 'MQTT_PORT', 1883)
+        return {
+            'mqtt_broker': mqtt_host,
+            'mqtt_port': mqtt_port,
+            'mqtt_topic': f'nodes/{obj.node_identifier}/telemetry',
+            'http_endpoint': 'POST /api/readings/',
+            'payload_schema': {
+                'node_id': obj.node_identifier,
+                'temperature': 0.0,
+                'humidity': 0.0,
+                'moisture_pct': 0.0,
+                'api_key': obj.api_key,
+            },
+        }
 
 
 # ─── Dashboard Summary ────────────────────────────────────────────────────────
@@ -171,6 +203,7 @@ class DashboardNodeSummarySerializer(serializers.Serializer):
     last_reading_at = serializers.DateTimeField(allow_null=True)
     temperature_c   = serializers.FloatField(allow_null=True)
     humidity_pct    = serializers.FloatField(allow_null=True)
+    moisture_pct    = serializers.FloatField(allow_null=True)   # ← Feature 1 fix
     ari_value       = serializers.FloatField(allow_null=True)
     risk_level      = serializers.CharField(allow_null=True)
     risk_color      = serializers.CharField(allow_null=True)

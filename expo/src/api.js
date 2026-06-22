@@ -13,8 +13,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
 // ─── Base URL Configuration ───────────────────────────────────────────────────
-const DEFAULT_BASE_URL = 'http://192.168.100.79:8000/api';
-const BASE_URL_KEY     = '@smart_stua_base_url';   // AsyncStorage — not sensitive
+const DEFAULT_BASE_URL = 'http://192.168.1.179:8000/api';
+const BASE_URL_KEY = '@smart_stua_base_url';   // AsyncStorage — not sensitive
 export const SECURE_TOKEN_KEY = 'smart_stua_auth_token'; // SecureStore — encrypted
 
 // Axios instance
@@ -43,8 +43,8 @@ api.interceptors.request.use(async config => {
         config.baseURL = baseUrl + '/api';
       }
     }
-    if (token)   config.headers.Authorization = `Token ${token}`; // DRF Token auth
-  } catch (_) {}
+    if (token) config.headers.Authorization = `Token ${token}`; // DRF Token auth
+  } catch (_) { }
   return config;
 });
 
@@ -128,6 +128,32 @@ export const sendDryerCommand = async (nodeId, action) => {
   return response.data;
 };
 
+// ─── Node Management (Feature 2) ─────────────────────────────────────────────
+export const registerDevice = async (data) => {
+  const response = await api.post('/devices/register/', data);
+  return response.data;
+};
+
+export const fetchDeviceDetail = async (nodeId) => {
+  const response = await api.get(`/devices/${nodeId}/`);
+  return response.data;
+};
+
+export const updateDevice = async (nodeId, data) => {
+  const response = await api.patch(`/devices/${nodeId}/update/`, data);
+  return response.data;
+};
+
+export const deleteDevice = async (nodeId) => {
+  const response = await api.delete(`/devices/${nodeId}/delete/`);
+  return response.data;
+};
+
+export const rotateApiKey = async (nodeId) => {
+  const response = await api.post(`/devices/${nodeId}/rotate-key/`);
+  return response.data;
+};
+
 // ─── 30-Second Polling Manager ────────────────────────────────────────────────
 let pollingInterval = null;
 
@@ -148,20 +174,45 @@ export const stopPolling = () => {
 // ─── Risk Utilities ───────────────────────────────────────────────────────────
 export const getRiskColor = riskLevel => {
   switch (riskLevel) {
-    case 'High':   return '#FF3B30';
+    case 'High': return '#FF3B30';
     case 'Medium': return '#FF9500';
-    case 'Low':    return '#34C759';
-    default:       return '#8E8E93';
+    case 'Low': return '#34C759';
+    default: return '#8E8E93';
   }
 };
 
 export const getRiskIcon = riskLevel => {
   switch (riskLevel) {
-    case 'High':   return 'alert-circle';
+    case 'High': return 'alert-circle';
     case 'Medium': return 'warning';
-    case 'Low':    return 'checkmark-circle';
-    default:       return 'help-circle';
+    case 'Low': return 'checkmark-circle';
+    default: return 'help-circle';
   }
+};
+
+// ─── Moisture Utilities (Feature 1) ──────────────────────────────────────────
+// Thresholds based on FAO grain storage guidance:
+//   < 5%  → sensor likely disconnected (red)
+//   5–40  → below safe range / critically dry (red)
+//   40–65 → optimal / safe (green)
+//   65–80 → elevated risk (orange)
+//   > 80  → critical — immediate drying required (red)
+export const getMoistureColor = (pct) => {
+  if (pct === null || pct === undefined) return '#8E8E93'; // unknown
+  if (pct < 5) return '#FF3B30';  // sensor likely disconnected
+  if (pct < 40) return '#FF3B30';  // critically dry
+  if (pct < 65) return '#00D26A';  // safe / optimal
+  if (pct < 80) return '#FF9500';  // elevated
+  return '#FF3B30';                  // critical
+};
+
+export const getMoistureLabel = (pct) => {
+  if (pct === null || pct === undefined) return 'Unknown';
+  if (pct < 5) return 'Check Sensor';
+  if (pct < 40) return 'Critically Dry';
+  if (pct < 65) return 'Optimal';
+  if (pct < 80) return 'Elevated';
+  return 'Critical';
 };
 
 export default api;

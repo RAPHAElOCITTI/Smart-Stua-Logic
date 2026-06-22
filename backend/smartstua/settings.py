@@ -14,7 +14,25 @@ load_dotenv(BASE_DIR / '.env')
 # ─── Security ────────────────────────────────────────────────────────────────
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-dev-key-change-in-production')
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+
+# Production: set ALLOWED_HOSTS to your Render subdomain (or custom domain).
+# Development: localhost and 127.0.0.1 are included automatically.
+_default_hosts = 'localhost,127.0.0.1,smartstua-backend.onrender.com'
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', _default_hosts).split(',')
+
+# ── Production Security Flags ─────────────────────────────────────────────────
+# These only activate when DEBUG=False (i.e. in production).
+# Behind Nginx: SECURE_SSL_REDIRECT is handled by Nginx itself, so we disable
+# Django's redirect to avoid a redirect loop (Nginx already forces HTTPS).
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER      = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT          = False  # Nginx handles this
+    SECURE_HSTS_SECONDS          = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD          = True
+    SESSION_COOKIE_SECURE        = True
+    CSRF_COOKIE_SECURE           = True
+    SECURE_CONTENT_TYPE_NOSNIFF  = True
 
 # ─── Applications ────────────────────────────────────────────────────────────
 INSTALLED_APPS = [
@@ -30,6 +48,7 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'corsheaders',
     'django_filters',
+    'django_ratelimit',            # Brute-force protection on login + IoT endpoints
     # Local
     'monitoring',
 ]
@@ -76,6 +95,21 @@ DATABASES = {
     'default': dj_database_url.parse(_DATABASE_URL, conn_max_age=600)
 }
 
+# ─── Cache (Redis) ────────────────────────────────────────────────────────────
+# Required by django-ratelimit for shared, distributed rate-limit counters.
+# Uses Django 4.2's built-in RedisCache — no extra package needed.
+_REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': _REDIS_URL,
+        'TIMEOUT': 300,
+        'OPTIONS': {
+            'db': '1',          # Use DB 1 for cache; DB 0 is reserved for Celery
+        },
+    }
+}
+
 # ─── Auth ────────────────────────────────────────────────────────────────────
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -113,10 +147,10 @@ REST_FRAMEWORK = {
 }
 
 # ─── CORS ────────────────────────────────────────────────────────────────────
-CORS_ALLOWED_ORIGINS = os.environ.get(
-    'CORS_ALLOWED_ORIGINS',
-    'http://localhost:3000,http://localhost:8081'
-).split(',')
+# Production CORS: lock to Render subdomain + Expo dev server.
+# Override via CORS_ALLOWED_ORIGINS env var in production .env.
+_default_cors = 'http://localhost:3000,http://localhost:8081,https://smartstua-backend.onrender.com'
+CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', _default_cors).split(',')
 CORS_ALLOW_CREDENTIALS = True
 
 CELERY_BROKER_URL      = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
