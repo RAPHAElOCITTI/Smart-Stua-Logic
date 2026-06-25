@@ -32,6 +32,7 @@ services:
     plan: free
     region: oregon
     maxmemoryPolicy: allkeys-lru
+    ipAllowList: []
 
   # ── Django Web Service ────────────────────────────────────────────────────────
   - type: web
