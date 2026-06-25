@@ -85,12 +85,23 @@ PYEOF
 
 fi
 
-echo "🚀  Starting: $*"
 # Use $PORT if set by Render.com; fall back to 8000 for local Docker
 if [[ "${1:-}" == "gunicorn" ]]; then
+  # ─── Free Tier background processes ──────────────────────────────────────────
+  echo "🌀 Starting Celery Worker (concurrency=1)..."
+  celery -A smartstua worker --loglevel=info --concurrency=1 > /app/logs/celery_worker.log 2>&1 &
+
+  echo "⏰ Starting Celery Beat Scheduler..."
+  celery -A smartstua beat --loglevel=info > /app/logs/celery_beat.log 2>&1 &
+
+  echo "🔌 Starting MQTT Bridge Daemon..."
+  python manage.py mqtt_bridge > /app/logs/mqtt_bridge.log 2>&1 &
+
+  # ─── Foreground Web Server ────────────────────────────────────────────────────
+  echo "🚀 Starting Gunicorn Web Server..."
   exec gunicorn smartstua.wsgi:application \
     --bind "0.0.0.0:${PORT:-8000}" \
-    --workers "${WEB_CONCURRENCY:-2}" \
+    --workers "${WEB_CONCURRENCY:-1}" \
     --threads 2 \
     --timeout 120 \
     --access-logfile - \
@@ -98,3 +109,4 @@ if [[ "${1:-}" == "gunicorn" ]]; then
 else
   exec "$@"
 fi
+
