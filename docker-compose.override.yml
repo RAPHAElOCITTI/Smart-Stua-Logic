@@ -5,22 +5,16 @@
 # when you run `docker compose up` locally. It NEVER runs in production.
 #
 # What it changes from the production compose:
-#   1. Reverts Mosquitto to anonymous mode (no credentials needed locally)
-#   2. Exposes backend port 8000 directly (Nginx not needed for local dev)
-#   3. Disables the certbot service (no TLS locally)
+#   1. Exposes backend port 8000 directly (Nginx not needed for local dev)
+#   2. Disables the certbot service (no TLS locally)
+#   3. Optionally uses local Mosquitto for MQTT (start with --profile local-mqtt)
+#      instead of HiveMQ Cloud — useful when working offline.
+#      To use: docker compose --profile local-mqtt up
+#      Then override backend MQTT env vars:
+#        MQTT_BROKER=mosquitto MQTT_PORT=1883 MQTT_USE_TLS=False
 # ═══════════════════════════════════════════════════════════════════════════════
 
 services:
-
-  # ── Mosquitto: use anonymous dev config locally ───────────────────────────────
-  mosquitto:
-    volumes:
-      - ./mosquitto/config/mosquitto.dev.conf:/mosquitto/config/mosquitto.conf:ro
-      - mosquitto_data:/mosquitto/data
-      - mosquitto_log:/mosquitto/log
-    # Override volumes to NOT mount passwd/acl files (not needed for dev)
-    healthcheck:
-      test: ["CMD-SHELL", "mosquitto_pub -h 127.0.0.1 -p 1883 -t health/check -m ping --quiet && echo ok"]
 
   # ── Backend: expose port 8000 directly for local API access ──────────────────
   backend:
