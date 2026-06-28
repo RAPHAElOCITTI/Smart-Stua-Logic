@@ -40,4 +40,6 @@ urlpatterns = [
     # ── System Health ─────────────────────────────────────────────────────────
     path('health/', views.health_check, name='health-check'),
     path('last-error/', views.last_error_view, name='last-error'),
+    path('run-migrations/', views.run_migrations_view, name='run-migrations'),
+    path('create-superuser/', views.create_superuser_view, name='create-superuser'),
 ]

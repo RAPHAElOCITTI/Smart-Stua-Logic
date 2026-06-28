@@ -588,3 +588,52 @@ def last_error_view(request):
     with open(log_path, 'r') as f:
         content = f.read()
     return HttpResponse(content, content_type="text/plain")
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def run_migrations_view(request):
+    """GET /api/run-migrations/ — runs django migrations and returns stdout."""
+    from django.core.management import call_command
+    from django.http import HttpResponse
+    from io import StringIO
+    out = StringIO()
+    try:
+        call_command('migrate', interactive=False, stdout=out)
+        return HttpResponse(out.getvalue(), content_type="text/plain")
+    except Exception as e:
+        import traceback
+        return HttpResponse(f"Error during migration:\n{traceback.format_exc()}", content_type="text/plain", status=500)
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def create_superuser_view(request):
+    """GET /api/create-superuser/ — seeds a superuser account."""
+    from django.contrib.auth.models import User as DjangoUser
+    from django.http import HttpResponse
+    import os
+    
+    username = 'admin'
+    email = os.environ.get('ADMIN_EMAIL', 'raphaelocitti@gmail.com')
+    password = os.environ.get('ADMIN_DEFAULT_PASSWORD', 'SmartStua@Change-Me!')
+    
+    try:
+        if not DjangoUser.objects.filter(username=username).exists():
+            DjangoUser.objects.create_superuser(
+                username=username,
+                email=email,
+                password=password,
+            )
+            return HttpResponse(f"Superuser '{username}' created successfully.", content_type="text/plain")
+        else:
+            # Let's update password just in case they forgot it or want to reset it
+            user = DjangoUser.objects.get(username=username)
+            user.set_password(password)
+            user.save()
+            return HttpResponse(f"Superuser '{username}' already exists. Password reset/updated successfully.", content_type="text/plain")
+    except Exception as e:
+        import traceback
+        return HttpResponse(f"Error creating superuser:\n{traceback.format_exc()}", content_type="text/plain", status=500)
