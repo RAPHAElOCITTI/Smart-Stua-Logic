@@ -46,11 +46,19 @@ RUN pip install --no-cache /wheels/* && rm -rf /wheels
 # Copy application source
 COPY . .
 
+# ── Pre-collect static files at build time ─────────────────────────────────────
+# Bakes Jazzmin admin CSS/JS into the image so the admin panel renders
+# correctly on Render.com (no Nginx — WhiteNoise serves them via Gunicorn).
+# Uses a dummy SECRET_KEY since collectstatic does not need a real one.
+RUN SECRET_KEY=build-time-placeholder \
+    DJANGO_SETTINGS_MODULE=smartstua.settings \
+    python manage.py collectstatic --noinput --clear
+
 # Create directories and set ownership
 RUN mkdir -p /app/staticfiles /app/logs \
     && chown -R appuser:appuser /app
 
-# Entrypoint script (migrations, collectstatic, first-boot seed)
+# Entrypoint script (migrations, collectstatic refresh, first-boot seed)
 COPY entrypoint.sh /entrypoint.sh
 RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 
@@ -59,7 +67,7 @@ EXPOSE 8000
 
 ENTRYPOINT ["/entrypoint.sh"]
 
-# Default: Gunicorn with 4 workers (override in compose for celery/beat/bridge)
+# Default: Gunicorn (override in compose for celery/beat/bridge)
 CMD ["gunicorn", "smartstua.wsgi:application", \
      "--bind", "0.0.0.0:8000", \
      "--workers", "4", \

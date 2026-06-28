@@ -55,6 +55,9 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # WhiteNoise: serves collected static files directly via Gunicorn on Render
+    # (no separate Nginx needed). Must be second, right after SecurityMiddleware.
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -127,6 +130,9 @@ USE_TZ = True
 # ─── Static Files ────────────────────────────────────────────────────────────
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+# WhiteNoise: compress + fingerprint assets at collectstatic time.
+# Serves admin (Jazzmin) CSS/JS via Gunicorn on Render — no separate Nginx required.
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ─── Django REST Framework ───────────────────────────────────────────────────
@@ -166,6 +172,7 @@ CELERY_TASK_ALWAYS_EAGER = os.environ.get('CELERY_TASK_ALWAYS_EAGER', 'False') =
 # ─── MQTT ────────────────────────────────────────────────────────────────────
 MQTT_BROKER   = os.environ.get('MQTT_BROKER', 'localhost')
 MQTT_PORT     = int(os.environ.get('MQTT_PORT', 1883))
+MQTT_USE_TLS  = os.environ.get('MQTT_USE_TLS', 'False') == 'True'
 MQTT_USERNAME = os.environ.get('MQTT_USERNAME', '')
 MQTT_PASSWORD = os.environ.get('MQTT_PASSWORD', '')
 

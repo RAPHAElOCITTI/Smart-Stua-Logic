@@ -19,6 +19,7 @@ certifi>=2024.0       # CA bundle for HiveMQ Cloud TLS verification
 
 # ── Production Server ─────────────────────────────────────────────────────────
 gunicorn>=21.2
+whitenoise[brotli]>=6.6   # Serves static files (admin CSS/JS) via Gunicorn on Render
 
 # ── Notifications ─────────────────────────────────────────────────────────────
 twilio>=8.0
