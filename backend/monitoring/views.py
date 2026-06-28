@@ -664,16 +664,23 @@ def view_bridge_logs_view(request):
 @authentication_classes([])
 @permission_classes([AllowAny])
 def debug_processes_view(request):
-    """GET /api/debug-processes/ — lists running processes inside the container."""
-    import subprocess
+    """GET /api/debug-processes/ — lists running processes by parsing /proc."""
+    import os
     from django.http import HttpResponse
+    
+    lines = ["PID  | CMDLINE"]
+    lines.append("-" * 40)
     try:
-        result = subprocess.run(['ps', 'aux'], capture_output=True, text=True, check=True)
-        return HttpResponse(result.stdout, content_type="text/plain")
+        for name in os.listdir('/proc'):
+            if name.isdigit():
+                pid = int(name)
+                try:
+                    with open(f'/proc/{pid}/cmdline', 'r') as f:
+                        cmdline = f.read().replace('\x00', ' ').strip()
+                    lines.append(f"{pid:<4} | {cmdline or '[no cmdline]'}")
+                except Exception:
+                    pass
+        return HttpResponse("\n".join(lines), content_type="text/plain")
     except Exception as e:
-        try:
-            result = subprocess.run(['ps'], capture_output=True, text=True, check=True)
-            return HttpResponse(result.stdout, content_type="text/plain")
-        except Exception as e2:
-            import traceback
-            return HttpResponse(f"Error running ps:\n{traceback.format_exc()}", content_type="text/plain", status=500)
+        import traceback
+        return HttpResponse(f"Error listing proc:\n{traceback.format_exc()}", content_type="text/plain", status=500)
