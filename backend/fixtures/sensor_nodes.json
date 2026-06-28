@@ -1,0 +1,36 @@
+[
+{
+  "model": "monitoring.sensornode",
+  "pk": 1,
+  "fields": {
+    "owner": 2,
+    "node_identifier": "WIFI_NODE_001",
+    "location_label": "Laroo Main Store",
+    "mac_address": "D4:54:8B:BC:FC:A9",
+    "gateway_id": "D4:54:8B:BC:FC:A9",
+    "api_key": "0409363a2920662b82f313eab1dd86d1d16cddd53a87ae24a762c21a636ac333",
+    "status": "inactive",
+    "last_reading_at": "2026-06-13T15:47:37.461Z",
+    "pending_command": "OFF",
+    "installed_at": "2026-06-10T15:26:19.743Z",
+    "notes": ""
+  }
+},
+{
+  "model": "monitoring.sensornode",
+  "pk": 2,
+  "fields": {
+    "owner": 2,
+    "node_identifier": "WIFI_NODE_002",
+    "location_label": "GULU MAIN STORE",
+    "mac_address": "D4:54:8B:DC:FC:A8",
+    "gateway_id": null,
+    "api_key": "402fcaacdfa8799b7cf5d8886683c64337aa31ffaabd504777f57a87a1dd74e1",
+    "status": "active",
+    "last_reading_at": "2026-06-15T13:13:17.384Z",
+    "pending_command": "OFF",
+    "installed_at": "2026-06-14T18:32:54.662Z",
+    "notes": "Testing..."
+  }
+}
+]

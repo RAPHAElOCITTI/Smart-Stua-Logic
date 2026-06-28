@@ -1,0 +1,28 @@
+[
+{
+  "model": "monitoring.threshold",
+  "pk": 1,
+  "fields": {
+    "node": 1,
+    "min_temp": 10.0,
+    "max_temp": 35.0,
+    "min_humidity": 40.0,
+    "max_humidity": 75.0,
+    "risk_duration": 6,
+    "updated_at": "2026-06-11T08:07:32.847Z"
+  }
+},
+{
+  "model": "monitoring.threshold",
+  "pk": 2,
+  "fields": {
+    "node": 2,
+    "min_temp": 10.0,
+    "max_temp": 35.0,
+    "min_humidity": 40.0,
+    "max_humidity": 75.0,
+    "risk_duration": 6,
+    "updated_at": "2026-06-14T19:12:24.839Z"
+  }
+}
+]

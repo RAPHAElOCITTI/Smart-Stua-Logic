@@ -1,0 +1,32 @@
+[
+{
+  "model": "authtoken.token",
+  "pk": "104a943ac0c7ef9fb28f46d762c73c7bd0116910",
+  "fields": {
+    "user": [
+      "smartstua_2"
+    ],
+    "created": "2026-06-14T13:43:40.003Z"
+  }
+},
+{
+  "model": "authtoken.token",
+  "pk": "94574c13fe24e0206fdf98462698bf5fdf54cc2e",
+  "fields": {
+    "user": [
+      "smartstua_1"
+    ],
+    "created": "2026-06-10T14:42:50.330Z"
+  }
+},
+{
+  "model": "authtoken.token",
+  "pk": "afe85ea2740fe6ba0c3b288965a4bb1bcab49c21",
+  "fields": {
+    "user": [
+      "smartstua_3"
+    ],
+    "created": "2026-06-15T06:44:59.685Z"
+  }
+}
+]

@@ -1,0 +1,44 @@
+[
+{
+  "model": "monitoring.user",
+  "pk": 1,
+  "fields": {
+    "full_name": "System Admin",
+    "phone_number": "+256000000000",
+    "email": "admin@smartstua.local",
+    "role": "admin",
+    "password_hash": "pbkdf2_sha256$600000$093CFtaD5BRzWxwaauun2K$68QzXkUUpa/RsZ1i7FzOuFa+wVE/TewDJgaWtElPtSE=",
+    "created_at": "2026-06-10T13:17:06.451Z",
+    "is_active": true,
+    "push_token": null
+  }
+},
+{
+  "model": "monitoring.user",
+  "pk": 2,
+  "fields": {
+    "full_name": "Raphael",
+    "phone_number": "+256762038491",
+    "email": "raphaelocitti@gmail.com",
+    "role": "store_manager",
+    "password_hash": "pbkdf2_sha256$600000$Y0UpkYZ3IPJcPcQhgRWIIB$3uJ4O3mPMZl8Fc5aGVd9ZokMbQ6my95Uv1ZBu93rxHo=",
+    "created_at": "2026-06-14T13:33:29.107Z",
+    "is_active": true,
+    "push_token": null
+  }
+},
+{
+  "model": "monitoring.user",
+  "pk": 3,
+  "fields": {
+    "full_name": "Edwin",
+    "phone_number": "+256761895244",
+    "email": "edwinocaya@gmail.com",
+    "role": "farmer",
+    "password_hash": "pbkdf2_sha256$600000$fHifQp6mbKarOuVrimARJQ$JKoDD8/tU44F9z06j6jBYwyb8zj+ohTEdYXoo0DR6B0=",
+    "created_at": "2026-06-15T06:42:24.753Z",
+    "is_active": true,
+    "push_token": null
+  }
+}
+]
