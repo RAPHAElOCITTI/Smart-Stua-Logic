@@ -637,3 +637,24 @@ def create_superuser_view(request):
     except Exception as e:
         import traceback
         return HttpResponse(f"Error creating superuser:\n{traceback.format_exc()}", content_type="text/plain", status=500)
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def view_bridge_logs_view(request):
+    """GET /api/bridge-logs/ — view the logs of the background mqtt bridge."""
+    import os
+    from django.http import HttpResponse
+    log_path = '/app/logs/mqtt_bridge.log'
+    if not os.path.exists(log_path):
+        log_dir = '/app/logs'
+        if os.path.exists(log_dir):
+            files = os.listdir(log_dir)
+            return HttpResponse(f"Log file not found. Files in {log_dir}: {files}", content_type="text/plain")
+        else:
+            return HttpResponse(f"Log file and /app/logs directory do not exist.", content_type="text/plain")
+            
+    with open(log_path, 'r') as f:
+        content = f.read()
+    return HttpResponse(content, content_type="text/plain")
