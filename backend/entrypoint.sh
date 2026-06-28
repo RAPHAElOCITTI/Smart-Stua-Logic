@@ -80,7 +80,7 @@ else:
 
 # ── 2. Smart-Stua custom User (for mobile app API login) ─────────────────────
 from monitoring.models import User
-if not User.objects.filter(role='admin').exists():
+if not User.objects.filter(phone_number=ADMIN_PHONE).exists():
     User.objects.create(
         full_name='System Admin',
         phone_number=ADMIN_PHONE,
@@ -93,7 +93,12 @@ if not User.objects.filter(role='admin').exists():
     print(f"    Phone:    {ADMIN_PHONE}")
     print(f"    Password: {ADMIN_PASSWORD}")
 else:
-    print("ℹ️   Smart-Stua app user already exists — skipping.")
+    u = User.objects.get(phone_number=ADMIN_PHONE)
+    u.role = 'admin'
+    u.email = ADMIN_EMAIL
+    u.password_hash = make_password(ADMIN_PASSWORD)
+    u.save()
+    print("ℹ️   Smart-Stua app user already exists — role and password updated.")
 PYEOF
 
 fi
