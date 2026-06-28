@@ -130,9 +130,10 @@ USE_TZ = True
 # ─── Static Files ────────────────────────────────────────────────────────────
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-# WhiteNoise: compress + fingerprint assets at collectstatic time.
-# Serves admin (Jazzmin) CSS/JS via Gunicorn on Render — no separate Nginx required.
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# WhiteNoise: compress assets at collectstatic time.
+# Uses CompressedStaticFilesStorage to avoid build-time MissingFileErrors caused by
+# missing sourcemaps (.map files) in third-party libraries (e.g. Jazzmin).
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ─── Django REST Framework ───────────────────────────────────────────────────
