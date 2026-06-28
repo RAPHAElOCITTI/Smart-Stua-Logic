@@ -13,6 +13,19 @@ set -euo pipefail
 POSTGRES_HOST="${POSTGRES_HOST:-db}"
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 REDIS_HOST="${REDIS_HOST:-redis}"
+REDIS_PORT=6379
+
+if [[ -n "${DATABASE_URL:-}" ]]; then
+  echo "🔍 Parsing DATABASE_URL for healthcheck..."
+  POSTGRES_HOST=$(python -c "import os; from urllib.parse import urlparse; print(urlparse(os.environ.get('DATABASE_URL')).hostname or 'db')")
+  POSTGRES_PORT=$(python -c "import os; from urllib.parse import urlparse; print(urlparse(os.environ.get('DATABASE_URL')).port or 5432)")
+fi
+
+if [[ -n "${REDIS_URL:-}" ]]; then
+  echo "🔍 Parsing REDIS_URL for healthcheck..."
+  REDIS_HOST=$(python -c "import os; from urllib.parse import urlparse; print(urlparse(os.environ.get('REDIS_URL')).hostname or 'redis')")
+  REDIS_PORT=$(python -c "import os; from urllib.parse import urlparse; print(urlparse(os.environ.get('REDIS_URL')).port or 6379)")
+fi
 
 # ─── Wait for PostgreSQL ──────────────────────────────────────────────────────
 echo "⏳  Waiting for PostgreSQL at ${POSTGRES_HOST}:${POSTGRES_PORT}..."
@@ -22,8 +35,8 @@ done
 echo "✅  PostgreSQL is ready."
 
 # ─── Wait for Redis ───────────────────────────────────────────────────────────
-echo "⏳  Waiting for Redis at ${REDIS_HOST}:6379..."
-until nc -z "${REDIS_HOST}" 6379; do
+echo "⏳  Waiting for Redis at ${REDIS_HOST}:${REDIS_PORT}..."
+until nc -z "${REDIS_HOST}" "${REDIS_PORT}"; do
   sleep 1
 done
 echo "✅  Redis is ready."
