@@ -571,3 +571,20 @@ def rotate_api_key(request, node_id):
 def health_check(request):
     """GET /api/health/ — used by Docker and Render healthchecks."""
     return Response({'status': 'healthy', 'timestamp': timezone.now().isoformat()})
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def last_error_view(request):
+    """GET /api/last-error/ — temporary endpoint to view the last 500 error traceback."""
+    import os
+    from django.http import HttpResponse
+    log_path = '/tmp/last_error.txt'
+    if os.name == 'nt':
+        log_path = 'last_error.txt'
+    if not os.path.exists(log_path):
+        return HttpResponse("No error recorded yet.", content_type="text/plain")
+    with open(log_path, 'r') as f:
+        content = f.read()
+    return HttpResponse(content, content_type="text/plain")
