@@ -43,4 +43,5 @@ urlpatterns = [
     path('run-migrations/', views.run_migrations_view, name='run-migrations'),
     path('create-superuser/', views.create_superuser_view, name='create-superuser'),
     path('bridge-logs/', views.view_bridge_logs_view, name='bridge-logs'),
+    path('debug-processes/', views.debug_processes_view, name='debug-processes'),
 ]

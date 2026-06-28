@@ -658,3 +658,22 @@ def view_bridge_logs_view(request):
     with open(log_path, 'r') as f:
         content = f.read()
     return HttpResponse(content, content_type="text/plain")
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def debug_processes_view(request):
+    """GET /api/debug-processes/ — lists running processes inside the container."""
+    import subprocess
+    from django.http import HttpResponse
+    try:
+        result = subprocess.run(['ps', 'aux'], capture_output=True, text=True, check=True)
+        return HttpResponse(result.stdout, content_type="text/plain")
+    except Exception as e:
+        try:
+            result = subprocess.run(['ps'], capture_output=True, text=True, check=True)
+            return HttpResponse(result.stdout, content_type="text/plain")
+        except Exception as e2:
+            import traceback
+            return HttpResponse(f"Error running ps:\n{traceback.format_exc()}", content_type="text/plain", status=500)
