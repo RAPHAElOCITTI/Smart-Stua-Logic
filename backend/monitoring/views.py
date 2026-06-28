@@ -46,11 +46,22 @@ def receive_reading(request):
     Auth: per-node API key in payload (not Bearer token).
     Rate-limited: 60 requests/min per node_id (django-ratelimit).
     """
-    from django_ratelimit.decorators import ratelimit
-    from django_ratelimit.exceptions import Ratelimited
-    # Apply rate limit programmatically (works inside @api_view)
-    node_id_val = request.data.get('node_id', 'unknown')
-    limiter = ratelimit(key='post:node_id', rate='60/m', block=False)
+    from django_ratelimit.core import is_ratelimited
+
+    limited = is_ratelimited(
+        request,
+        group='iot_ingestion',
+        key='post:node_id',
+        rate='60/m',
+        method='POST',
+        increment=True,
+    )
+    if limited:
+        logger.warning(f'[API] Rate limit exceeded for node: {request.data.get("node_id")}')
+        return Response(
+            {'error': 'Rate limit exceeded. Maximum 60 readings/minute per node.'},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
 
     serializer = SensorPayloadSerializer(data=request.data)
     if not serializer.is_valid():
