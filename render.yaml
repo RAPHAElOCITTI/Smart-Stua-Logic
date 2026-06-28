@@ -40,7 +40,7 @@ services:
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    dockerCommand: "gunicorn"
+    dockerCommand: "/entrypoint.sh gunicorn"
     plan: free               # free tier: 512 MB RAM, spins down after 15 min idle
     region: oregon
     healthCheckPath: /api/health/
