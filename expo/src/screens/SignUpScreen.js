@@ -119,8 +119,9 @@ export default function SignUpScreen({ navigation }) {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior="padding"
         keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
+        enabled
       >
         <ScrollView
           contentContainerStyle={styles.scroll}
@@ -414,9 +415,9 @@ const styles = StyleSheet.create({
   },
   innerContainer: {
     flexGrow: 1,
-    justifyContent: 'center',
     paddingHorizontal: 24,
-    paddingVertical: 48,
+    paddingTop: 40,
+    paddingBottom: 32,
   },
   header: {
     alignItems: 'center',
