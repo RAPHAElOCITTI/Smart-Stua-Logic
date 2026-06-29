@@ -14,7 +14,7 @@
  * so the user cannot press "back" to return to Login once authenticated.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -69,6 +69,11 @@ export default function LoginScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [focusedField, setFocusedField] = useState(null);
+
+  // ─── Focus Refs ───────────────────────────────────────────────────────────────
+  // Enables keyboard's "Next" action to chain focus between fields without
+  // requiring the user to tap each input manually.
+  const passwordRef = useRef(null);
 
   // ─── Login Handler ────────────────────────────────────────────────────────────
   const handleLogin = async () => {
@@ -173,8 +178,7 @@ export default function LoginScreen({ navigation }) {
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-            <View style={styles.innerContainer}>
+          <View style={styles.innerContainer}>
               {/* ── Header / Branding ── */}
               <View style={styles.header}>
                 <LinearGradient
@@ -235,6 +239,8 @@ export default function LoginScreen({ navigation }) {
                       autoCapitalize="none"
                       autoCorrect={false}
                       returnKeyType="next"
+                      onSubmitEditing={() => passwordRef.current?.focus()}
+                      blurOnSubmit={false}
                       editable={!loading}
                       testID="input-phone"
                     />
@@ -257,6 +263,7 @@ export default function LoginScreen({ navigation }) {
                       style={styles.inputIcon}
                     />
                     <TextInput
+                      ref={passwordRef}
                       style={[styles.input, { flex: 1 }]}
                       placeholder="••••••••"
                       placeholderTextColor={C.textSecondary}
@@ -337,8 +344,7 @@ export default function LoginScreen({ navigation }) {
                 </Text>
               </View>
             </View>
-          </TouchableWithoutFeedback>
-        </ScrollView>
+          </ScrollView>
       </KeyboardAvoidingView>
     </View>
   );
@@ -465,7 +471,6 @@ const styles = StyleSheet.create({
     flex: 1,
     color: C.textPrimary,
     fontSize: 15,
-    height: '100%',
   },
   eyeBtn: {
     padding: 4,

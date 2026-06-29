@@ -5,7 +5,7 @@
  * Provides a selection for Farmer or Store Manager role.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -53,6 +53,13 @@ export default function SignUpScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [focusedField, setFocusedField] = useState(null);
+
+  // ─── Focus Refs ───────────────────────────────────────────────────────────────
+  // Chains keyboard "Next" action across all four fields so the user never needs
+  // to tap manually between Full Name → Phone → Email → Password.
+  const phoneRef    = useRef(null);
+  const emailRef    = useRef(null);
+  const passwordRef = useRef(null);
 
   // ─── Registration Handler ────────────────────────────────────────────────────
   const handleSignUp = async () => {
@@ -129,8 +136,7 @@ export default function SignUpScreen({ navigation }) {
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-            <View style={styles.innerContainer}>
+          <View style={styles.innerContainer}>
               {/* ── Header ── */}
               <View style={styles.header}>
                 <LinearGradient
@@ -184,6 +190,8 @@ export default function SignUpScreen({ navigation }) {
                       autoCapitalize="words"
                       autoCorrect={false}
                       returnKeyType="next"
+                      onSubmitEditing={() => phoneRef.current?.focus()}
+                      blurOnSubmit={false}
                       editable={!loading}
                     />
                   </View>
@@ -205,6 +213,7 @@ export default function SignUpScreen({ navigation }) {
                       style={styles.inputIcon}
                     />
                     <TextInput
+                      ref={phoneRef}
                       style={styles.input}
                       placeholder="+256 700 000 000"
                       placeholderTextColor={C.textSecondary}
@@ -219,6 +228,8 @@ export default function SignUpScreen({ navigation }) {
                       autoCapitalize="none"
                       autoCorrect={false}
                       returnKeyType="next"
+                      onSubmitEditing={() => emailRef.current?.focus()}
+                      blurOnSubmit={false}
                       editable={!loading}
                     />
                   </View>
@@ -240,6 +251,7 @@ export default function SignUpScreen({ navigation }) {
                       style={styles.inputIcon}
                     />
                     <TextInput
+                      ref={emailRef}
                       style={styles.input}
                       placeholder="name@domain.com"
                       placeholderTextColor={C.textSecondary}
@@ -254,6 +266,8 @@ export default function SignUpScreen({ navigation }) {
                       autoCapitalize="none"
                       autoCorrect={false}
                       returnKeyType="next"
+                      onSubmitEditing={() => passwordRef.current?.focus()}
+                      blurOnSubmit={false}
                       editable={!loading}
                     />
                   </View>
@@ -275,6 +289,7 @@ export default function SignUpScreen({ navigation }) {
                       style={styles.inputIcon}
                     />
                     <TextInput
+                      ref={passwordRef}
                       style={[styles.input, { flex: 1 }]}
                       placeholder="Min. 8 characters"
                       placeholderTextColor={C.textSecondary}
@@ -289,6 +304,7 @@ export default function SignUpScreen({ navigation }) {
                       autoCapitalize="none"
                       autoCorrect={false}
                       returnKeyType="done"
+                      onSubmitEditing={handleSignUp}
                       editable={!loading}
                     />
                     <TouchableOpacity
@@ -398,8 +414,7 @@ export default function SignUpScreen({ navigation }) {
                 </TouchableOpacity>
               </View>
             </View>
-          </TouchableWithoutFeedback>
-        </ScrollView>
+          </ScrollView>
       </KeyboardAvoidingView>
     </View>
   );
@@ -503,7 +518,6 @@ const styles = StyleSheet.create({
     flex: 1,
     color: C.textPrimary,
     fontSize: 15,
-    height: '100%',
   },
   eyeBtn: {
     padding: 4,

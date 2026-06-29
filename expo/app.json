@@ -20,7 +20,7 @@
       "bundleIdentifier": "com.smartstua.monitor"
     },
     "android": {
-      "softwareKeyboardLayoutMode": "pan",
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0A0F1E"
