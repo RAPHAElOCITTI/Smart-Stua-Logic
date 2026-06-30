@@ -177,7 +177,9 @@ export default function SignUpScreen({ navigation }) {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
       >
         <ScrollView
-          contentContainerStyle={styles.scroll}
+          contentContainerStyle={
+            Platform.OS === 'ios' ? styles.scrollIOS : styles.scrollAndroid
+          }
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           bounces={false}
@@ -447,9 +449,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: C.bg,
   },
-  scroll: {
+  // iOS: minHeight forces full-screen layout so header is never clipped.
+  // Android (Samsung): flexGrow only — minHeight prevents the view from
+  // shrinking when the soft keyboard appears, causing inputs to stay hidden.
+  scrollIOS: {
     flexGrow: 1,
     minHeight: SCREEN_HEIGHT,
+  },
+  scrollAndroid: {
+    flexGrow: 1,
   },
   innerContainer: {
     flex: 1,
