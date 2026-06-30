@@ -28,34 +28,34 @@
 // ==========================================
 
 // Node Identity — must match node_identifier registered in the dashboard
-const char *NODE_ID = "WIFI_NODE_002";
+const char *NODE_ID = "NODE_003";
 
 // Wi-Fi Settings
-const char *ssid     = "Rafy";
+const char *ssid = "Rafy";
 const char *password = "edwinocaya2";
 
 // ── HiveMQ Cloud Broker Settings ────────────────────────────────────────────
 // Cluster address from HiveMQ dashboard → Overview → Connection Settings
 const char *mqtt_server = "5d2b4f49284d429da0268114f3839cc4.s1.eu.hivemq.cloud";
-const int   mqtt_port   = 8883;   // TLS/SSL port (mandatory for HiveMQ Cloud)
+const int mqtt_port = 8883; // TLS/SSL port (mandatory for HiveMQ Cloud)
 
 // HiveMQ Cloud credentials — create in HiveMQ dashboard → Access Management
 // These must match the user you created in the HiveMQ Cloud console.
-const char *mqtt_user = "your_hivemq_username";   // REPLACE with your HiveMQ username
-const char *mqtt_pass = "your_hivemq_password";   // REPLACE with your HiveMQ password
+const char *mqtt_user = "Rafy_23";     // REPLACE with your HiveMQ username
+const char *mqtt_pass = "EdwinOcaya2"; // REPLACE with your HiveMQ password
 
 // Topic is built dynamically in setup() as: nodes/<NODE_ID>/telemetry
 char mqtt_topic[64];
 
 // Node Authentication — API key returned by POST /api/devices/register/
 const char *API_KEY =
-    "402fcaacdfa8799b7cf5d8886683c64337aa31ffaabd504777f57a87a1dd74e1";
+    "52854422ebc0a78536f5d48f333160ff96fbe027592bb54e7a39fd2e5fd5e40d";
 
 // Reading interval (milliseconds)
-#define READ_INTERVAL_MS 5000  // 5 seconds → real-time dashboard
+#define READ_INTERVAL_MS 5000 // 5 seconds → real-time dashboard
 
 // Pin Definitions
-#define DHT_PIN      15
+#define DHT_PIN 15
 #define MOISTURE_PIN 34
 #ifndef LED_BUILTIN
 #define LED_BUILTIN 2
@@ -68,7 +68,7 @@ DHT dht(DHT_PIN, DHT_TYPE);
 // ── TLS-enabled MQTT client ────────────────────────────────────────────────
 // WiFiClientSecure handles the SSL/TLS handshake with HiveMQ Cloud.
 WiFiClientSecure espClient;
-PubSubClient     client(espClient);
+PubSubClient client(espClient);
 
 // Tracks last publish time (non-blocking interval via millis())
 unsigned long lastPublishMs = 0;
@@ -86,7 +86,8 @@ void statusBlink(int count, int speedMs) {
   }
 }
 
-// ─── Wi-Fi Connection ─────────────────────────────────────────────────────────
+// ─── Wi-Fi Connection
+// ─────────────────────────────────────────────────────────
 void connectWiFi() {
   Serial.print(F("[WIFI] Connecting to "));
   Serial.println(ssid);
@@ -103,9 +104,10 @@ void connectWiFi() {
   statusBlink(2, 200);
 }
 
-// ─── MQTT Reconnect ───────────────────────────────────────────────────────────
-// Called from loop() whenever the broker connection drops.
-// Authenticates with HiveMQ Cloud credentials.
+// ─── MQTT Reconnect
+// ─────────────────────────────────────────────────────────── Called from
+// loop() whenever the broker connection drops. Authenticates with HiveMQ Cloud
+// credentials.
 void reconnectMQTT() {
   while (!client.connected()) {
     Serial.print(F("[MQTT] Connecting to HiveMQ Cloud..."));
@@ -137,9 +139,10 @@ void reconnectMQTT() {
   }
 }
 
-// ─── Command Callback ─────────────────────────────────────────────────────────
-// Called when a message arrives on nodes/<NODE_ID>/commands.
-// Backend publishes "ON" or "OFF" to control the grain dryer.
+// ─── Command Callback
+// ───────────────────────────────────────────────────────── Called when a
+// message arrives on nodes/<NODE_ID>/commands. Backend publishes "ON" or "OFF"
+// to control the grain dryer.
 void commandCallback(char *topic, byte *payload, unsigned int length) {
   String cmd = "";
   for (unsigned int i = 0; i < length; i++) {
@@ -170,7 +173,8 @@ void setup() {
 
   snprintf(mqtt_topic, sizeof(mqtt_topic), "nodes/%s/telemetry", NODE_ID);
 
-  Serial.println(F("\n[SYSTEM] Smart-Stua Node starting (HiveMQ Cloud / TLS mode)"));
+  Serial.println(
+      F("\n[SYSTEM] Smart-Stua Node starting (HiveMQ Cloud / TLS mode)"));
   Serial.print(F("[SYSTEM] Publishing to topic: "));
   Serial.println(mqtt_topic);
   Serial.print(F("[SYSTEM] Broker: "));
@@ -188,7 +192,8 @@ void setup() {
 
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(commandCallback);
-  // HiveMQ Cloud may send large ACK packets — increase buffer if payloads > 256 bytes
+  // HiveMQ Cloud may send large ACK packets — increase buffer if payloads > 256
+  // bytes
   client.setBufferSize(512);
 
   Serial.println(F("[SYSTEM] Real-time streaming mode active (TLS)."));
@@ -210,16 +215,17 @@ void loop() {
     lastPublishMs = now;
 
     // Read sensors
-    float temp     = dht.readTemperature();
-    float hum      = dht.readHumidity();
-    int   rawMoist = analogRead(MOISTURE_PIN);
+    float temp = dht.readTemperature();
+    float hum = dht.readHumidity();
+    int rawMoist = analogRead(MOISTURE_PIN);
 
     const int DRY_ADC = 3500;
     const int WET_ADC = 1200;
     float moistPct = map(rawMoist, DRY_ADC, WET_ADC, 0, 100);
     moistPct = constrain(moistPct, 0.0f, 100.0f);
 
-    Serial.printf("[SENSOR] T=%.1f°C  H=%.1f%%  Moist=%.1f%%\n", temp, hum, moistPct);
+    Serial.printf("[SENSOR] T=%.1f°C  H=%.1f%%  Moist=%.1f%%\n", temp, hum,
+                  moistPct);
 
     if (isnan(temp) || isnan(hum)) {
       Serial.println(F("[SENSOR] DHT read error — skipping publish"));
@@ -233,11 +239,11 @@ void loop() {
 #else
     StaticJsonDocument<256> doc;
 #endif
-    doc["node_id"]     = NODE_ID;
+    doc["node_id"] = NODE_ID;
     doc["temperature"] = temp;
-    doc["humidity"]    = hum;
+    doc["humidity"] = hum;
     doc["moisture_pct"] = moistPct;
-    doc["api_key"]     = API_KEY;
+    doc["api_key"] = API_KEY;
 
     char buffer[256];
     serializeJson(doc, buffer);
