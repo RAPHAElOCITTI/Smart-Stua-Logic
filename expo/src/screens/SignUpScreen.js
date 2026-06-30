@@ -2,7 +2,14 @@
  * Smart-Stua Mobile — SignUpScreen.js
  * =====================================
  * Registers a new user against POST /api/auth/register/ on the Django backend.
- * Provides a selection for Farmer or Store Manager role.
+ * On success, shows an Alert dialog then navigates back to the Login screen.
+ *
+ * Fields: Full Name, Phone Number, Email (optional), Password, Role selector.
+ * Role choices: 'farmer' | 'store_manager' (matches backend UserRole enum).
+ *
+ * Navigation: after successful registration → navigation.navigate('Login')
+ * (user must log in with their new credentials — no auto-login to keep auth
+ * flow simple and explicit).
  */
 
 import React, { useState, useRef } from 'react';
@@ -11,7 +18,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   StyleSheet,
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -26,7 +32,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { register } from '../api';
 
-// ─── Design Tokens ────────────────────────────────────────────────────────────
+// ─── Design Tokens (identical to LoginScreen and Dashboard) ───────────────────
 const C = {
   bg: '#0A0F1E',
   bgCard: '#0D1526',
@@ -41,13 +47,21 @@ const C = {
   inputBg: '#111827',
 };
 
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// ─── Role Options ─────────────────────────────────────────────────────────────
+const ROLES = [
+  { value: 'farmer', label: 'Farmer', icon: 'leaf-outline' },
+  { value: 'store_manager', label: 'Store Manager', icon: 'business-outline' },
+];
+
 export default function SignUpScreen({ navigation }) {
   // ─── Form State ─────────────────────────────────────────────────────────────
   const [fullName, setFullName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('farmer'); // Default to farmer
+  const [role, setRole] = useState('farmer');
   const [showPassword, setShowPassword] = useState(false);
 
   // ─── UI State ────────────────────────────────────────────────────────────────
@@ -55,15 +69,16 @@ export default function SignUpScreen({ navigation }) {
   const [error, setError] = useState('');
   const [focusedField, setFocusedField] = useState(null);
 
-  // ─── Focus Refs ───────────────────────────────────────────────────────────────
-  // Chains keyboard "Next" action across all four fields so the user never needs
-  // to tap manually between Full Name → Phone → Email → Password.
-  const phoneRef    = useRef(null);
-  const emailRef    = useRef(null);
+  // ─── Focus Refs (keyboard "Next" chaining) ────────────────────────────────────
+  const phoneRef = useRef(null);
+  const emailRef = useRef(null);
   const passwordRef = useRef(null);
 
-  // ─── Registration Handler ────────────────────────────────────────────────────
-  const handleSignUp = async () => {
+  // ─── Register Handler ─────────────────────────────────────────────────────────
+  const handleRegister = async () => {
+    Keyboard.dismiss();
+
+    // ── Client-side validation ────────────────────────────────────────────────
     if (!fullName.trim()) {
       setError('Full name is required.');
       return;
@@ -85,42 +100,73 @@ export default function SignUpScreen({ navigation }) {
     setLoading(true);
 
     try {
-      await register({
+      /**
+       * POST /api/auth/register/
+       * Body: { full_name, phone_number, email?, password, role }
+       * Success 201: user object
+       * Error 400:  { "phone_number": ["This field must be unique."], ... }
+       */
+      const payload = {
         full_name: fullName.trim(),
         phone_number: phoneNumber.trim(),
-        email: email.trim() || undefined,
-        password: password,
-        role: role,
-      });
+        password,
+        role,
+      };
+      // Only include email if provided (it's optional on the backend)
+      if (email.trim()) {
+        payload.email = email.trim().toLowerCase();
+      }
 
+      await register(payload);
+
+      // Success — show confirmation then route to Login
       Alert.alert(
         'Registration Successful',
-        'Your account has been created. Please sign in.',
-        [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
+        `Welcome, ${fullName.split(' ')[0]}! Your account has been created.\n\nPlease sign in with your new credentials.`,
+        [
+          {
+            text: 'Sign In',
+            onPress: () => navigation.navigate('Login'),
+          },
+        ],
+        { cancelable: false }
       );
+
     } catch (err) {
-      if (err.response && err.response.data) {
-        // Extract validation errors from DRF
-        const details = err.response.data;
-        let errMsg = '';
-        if (typeof details === 'object') {
-          errMsg = Object.entries(details)
-            .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(' ') : msgs}`)
-            .join('\n');
-        } else {
-          errMsg = details;
-        }
-        setError(errMsg || 'Registration failed.');
-      } else if (err.message === 'Network request failed' || err.message.includes('Network')) {
-        setError('Cannot reach the server. Check your Wi-Fi/network connection.');
+      // ── DRF field-level error extraction ─────────────────────────────────────
+      // DRF returns { "field": ["message 1", ...] } on validation errors
+      const responseData = err?.response?.data;
+
+      if (responseData && typeof responseData === 'object') {
+        const messages = [];
+        Object.entries(responseData).forEach(([field, msgs]) => {
+          const fieldLabel = field === 'non_field_errors'
+            ? ''
+            : field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + ': ';
+          const msgText = Array.isArray(msgs) ? msgs.join(' ') : String(msgs);
+          messages.push(`${fieldLabel}${msgText}`);
+        });
+        setError(messages.join('\n'));
+      } else if (err?.message?.includes('Network') || err?.message?.includes('network')) {
+        setError('Cannot reach the server. Check your Wi-Fi and ensure the backend is running.');
       } else {
-        setError(err.message);
+        setError(err?.message || 'Registration failed. Please try again.');
       }
     } finally {
       setLoading(false);
     }
   };
 
+  // ─── Helpers ─────────────────────────────────────────────────────────────────
+  const inputStyle = (field) => [
+    styles.inputWrapper,
+    focusedField === field && styles.inputWrapperFocused,
+  ];
+
+  const iconColor = (field) =>
+    focusedField === field ? C.primary : C.textSecondary;
+
+  // ─── Render ───────────────────────────────────────────────────────────────────
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={C.bg} />
@@ -138,294 +184,264 @@ export default function SignUpScreen({ navigation }) {
           overScrollMode="never"
         >
           <View style={styles.innerContainer}>
-              {/* ── Header ── */}
-              <View style={styles.header}>
-                <LinearGradient
-                  colors={[C.primary + '33', C.accent + '1A']}
-                  style={styles.logoRing}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  <Ionicons name="person-add" size={32} color={C.primary} />
-                </LinearGradient>
-                <Text style={styles.appName}>Create Account</Text>
-                <Text style={styles.tagline}>Smart-Stua Monitoring Network</Text>
-              </View>
 
-              {/* ── Card ── */}
-              <View style={styles.card}>
-                {/* ── Error Banner ── */}
-                {!!error && (
-                  <View style={styles.errorBanner}>
-                    <Ionicons name="alert-circle" size={16} color={C.danger} />
-                    <Text style={styles.errorText}>{error}</Text>
-                  </View>
-                )}
+            {/* ── Header / Branding ── */}
+            <View style={styles.header}>
+              <LinearGradient
+                colors={[C.primary + '33', C.accent + '1A']}
+                style={styles.logoRing}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Ionicons name="person-add" size={32} color={C.primary} />
+              </LinearGradient>
 
-                {/* ── Full Name Field ── */}
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.label}>Full Name</Text>
-                  <View
-                    style={[
-                      styles.inputWrapper,
-                      focusedField === 'fullName' && styles.inputWrapperFocused,
-                    ]}
-                  >
-                    <Ionicons
-                      name="person-outline"
-                      size={18}
-                      color={focusedField === 'fullName' ? C.primary : C.textSecondary}
-                      style={styles.inputIcon}
-                    />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Enter full name"
-                      placeholderTextColor={C.textSecondary}
-                      value={fullName}
-                      onChangeText={text => {
-                        setFullName(text);
-                        if (error) setError('');
-                      }}
-                      onFocus={() => setFocusedField('fullName')}
-                      onBlur={() => setFocusedField(null)}
-                      autoCapitalize="words"
-                      autoCorrect={false}
-                      returnKeyType="next"
-                      onSubmitEditing={() => phoneRef.current?.focus()}
-                      blurOnSubmit={false}
-                      editable={!loading}
-                    />
-                  </View>
-                </View>
-
-                {/* ── Phone Number Field ── */}
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.label}>Phone Number</Text>
-                  <View
-                    style={[
-                      styles.inputWrapper,
-                      focusedField === 'phone' && styles.inputWrapperFocused,
-                    ]}
-                  >
-                    <Ionicons
-                      name="call-outline"
-                      size={18}
-                      color={focusedField === 'phone' ? C.primary : C.textSecondary}
-                      style={styles.inputIcon}
-                    />
-                    <TextInput
-                      ref={phoneRef}
-                      style={styles.input}
-                      placeholder="+256 700 000 000"
-                      placeholderTextColor={C.textSecondary}
-                      value={phoneNumber}
-                      onChangeText={text => {
-                        setPhoneNumber(text);
-                        if (error) setError('');
-                      }}
-                      onFocus={() => setFocusedField('phone')}
-                      onBlur={() => setFocusedField(null)}
-                      keyboardType="phone-pad"
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      returnKeyType="next"
-                      onSubmitEditing={() => emailRef.current?.focus()}
-                      blurOnSubmit={false}
-                      editable={!loading}
-                    />
-                  </View>
-                </View>
-
-                {/* ── Email Field (Optional) ── */}
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.label}>Email Address (Optional)</Text>
-                  <View
-                    style={[
-                      styles.inputWrapper,
-                      focusedField === 'email' && styles.inputWrapperFocused,
-                    ]}
-                  >
-                    <Ionicons
-                      name="mail-outline"
-                      size={18}
-                      color={focusedField === 'email' ? C.primary : C.textSecondary}
-                      style={styles.inputIcon}
-                    />
-                    <TextInput
-                      ref={emailRef}
-                      style={styles.input}
-                      placeholder="name@domain.com"
-                      placeholderTextColor={C.textSecondary}
-                      value={email}
-                      onChangeText={text => {
-                        setEmail(text);
-                        if (error) setError('');
-                      }}
-                      onFocus={() => setFocusedField('email')}
-                      onBlur={() => setFocusedField(null)}
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      returnKeyType="next"
-                      onSubmitEditing={() => passwordRef.current?.focus()}
-                      blurOnSubmit={false}
-                      editable={!loading}
-                    />
-                  </View>
-                </View>
-
-                {/* ── Password Field ── */}
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.label}>Password</Text>
-                  <View
-                    style={[
-                      styles.inputWrapper,
-                      focusedField === 'password' && styles.inputWrapperFocused,
-                    ]}
-                  >
-                    <Ionicons
-                      name="lock-closed-outline"
-                      size={18}
-                      color={focusedField === 'password' ? C.primary : C.textSecondary}
-                      style={styles.inputIcon}
-                    />
-                    <TextInput
-                      ref={passwordRef}
-                      style={[styles.input, { flex: 1 }]}
-                      placeholder="Min. 8 characters"
-                      placeholderTextColor={C.textSecondary}
-                      value={password}
-                      onChangeText={text => {
-                        setPassword(text);
-                        if (error) setError('');
-                      }}
-                      onFocus={() => setFocusedField('password')}
-                      onBlur={() => setFocusedField(null)}
-                      secureTextEntry={!showPassword}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      returnKeyType="done"
-                      onSubmitEditing={handleSignUp}
-                      editable={!loading}
-                    />
-                    <TouchableOpacity
-                      onPress={() => setShowPassword(v => !v)}
-                      style={styles.eyeBtn}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Ionicons
-                        name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                        size={18}
-                        color={C.textSecondary}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* ── Role Selector ── */}
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.label}>Assign Role</Text>
-                  <View style={styles.roleContainer}>
-                    <TouchableOpacity
-                      activeOpacity={0.8}
-                      style={[
-                        styles.roleButton,
-                        role === 'farmer' && styles.roleButtonActive,
-                      ]}
-                      onPress={() => setRole('farmer')}
-                      disabled={loading}
-                    >
-                      <Ionicons
-                        name="leaf-outline"
-                        size={20}
-                        color={role === 'farmer' ? '#000' : C.textSecondary}
-                      />
-                      <Text
-                        style={[
-                          styles.roleButtonText,
-                          role === 'farmer' && styles.roleButtonTextActive,
-                        ]}
-                      >
-                        Farmer
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      activeOpacity={0.8}
-                      style={[
-                        styles.roleButton,
-                        role === 'store_manager' && styles.roleButtonActive,
-                      ]}
-                      onPress={() => setRole('store_manager')}
-                      disabled={loading}
-                    >
-                      <Ionicons
-                        name="business-outline"
-                        size={20}
-                        color={role === 'store_manager' ? '#000' : C.textSecondary}
-                      />
-                      <Text
-                        style={[
-                          styles.roleButtonText,
-                          role === 'store_manager' && styles.roleButtonTextActive,
-                        ]}
-                      >
-                        Store Manager
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* ── Submit Button ── */}
-                <TouchableOpacity
-                  onPress={handleSignUp}
-                  disabled={loading}
-                  activeOpacity={0.85}
-                  style={styles.btnContainer}
-                >
-                  <LinearGradient
-                    colors={loading ? ['#1E3A2F', '#1E3A2F'] : [C.primary, C.primaryDark]}
-                    style={styles.btn}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                  >
-                    {loading ? (
-                      <View style={styles.btnInner}>
-                        <ActivityIndicator size="small" color={C.primary} />
-                        <Text style={[styles.btnText, { color: C.primary, marginLeft: 8 }]}>
-                          Creating Account…
-                        </Text>
-                      </View>
-                    ) : (
-                      <View style={styles.btnInner}>
-                        <Text style={styles.btnText}>Register</Text>
-                        <Ionicons name="checkmark" size={18} color="#000" style={{ marginLeft: 6 }} />
-                      </View>
-                    )}
-                  </LinearGradient>
-                </TouchableOpacity>
-              </View>
-
-              {/* ── Footer Link ── */}
-              <View style={styles.footer}>
-                <TouchableOpacity
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    navigation.navigate('Login');
-                  }}
-                >
-                  <Text style={styles.signInLink}>
-                    Already have an account? <Text style={{ color: C.primary, fontWeight: '700' }}>Sign In</Text>
-                  </Text>
-                </TouchableOpacity>
-              </View>
+              <Text style={styles.appName}>Create Account</Text>
+              <Text style={styles.tagline}>Smart-Stua Monitoring Network</Text>
             </View>
-          </ScrollView>
+
+            {/* ── Card ── */}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Register</Text>
+              <Text style={styles.cardSubtitle}>
+                Join the Smart-Stua platform to monitor your grain storage
+              </Text>
+
+              {/* ── Error Banner ── */}
+              {!!error && (
+                <View style={styles.errorBanner}>
+                  <Ionicons name="alert-circle" size={16} color={C.danger} />
+                  <Text style={styles.errorText}>{error}</Text>
+                </View>
+              )}
+
+              {/* ── Full Name ── */}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.label}>Full Name</Text>
+                <View style={inputStyle('name')}>
+                  <Ionicons
+                    name="person-outline"
+                    size={18}
+                    color={iconColor('name')}
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Edwin Ocaya"
+                    placeholderTextColor={C.textSecondary}
+                    value={fullName}
+                    onChangeText={text => { setFullName(text); if (error) setError(''); }}
+                    onFocus={() => setFocusedField('name')}
+                    onBlur={() => setFocusedField(null)}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                    returnKeyType="next"
+                    onSubmitEditing={() => phoneRef.current?.focus()}
+                    blurOnSubmit={false}
+                    editable={!loading}
+                    testID="input-fullname"
+                  />
+                </View>
+              </View>
+
+              {/* ── Phone Number ── */}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.label}>Phone Number</Text>
+                <View style={inputStyle('phone')}>
+                  <Ionicons
+                    name="call-outline"
+                    size={18}
+                    color={iconColor('phone')}
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    ref={phoneRef}
+                    style={styles.input}
+                    placeholder="+256 700 000 000"
+                    placeholderTextColor={C.textSecondary}
+                    value={phoneNumber}
+                    onChangeText={text => { setPhoneNumber(text); if (error) setError(''); }}
+                    onFocus={() => setFocusedField('phone')}
+                    onBlur={() => setFocusedField(null)}
+                    keyboardType="phone-pad"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="next"
+                    onSubmitEditing={() => emailRef.current?.focus()}
+                    blurOnSubmit={false}
+                    editable={!loading}
+                    testID="input-phone"
+                  />
+                </View>
+              </View>
+
+              {/* ── Email (optional) ── */}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.label}>
+                  Email Address{' '}
+                  <Text style={styles.optionalTag}>(optional)</Text>
+                </Text>
+                <View style={inputStyle('email')}>
+                  <Ionicons
+                    name="mail-outline"
+                    size={18}
+                    color={iconColor('email')}
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    ref={emailRef}
+                    style={styles.input}
+                    placeholder="you@example.com"
+                    placeholderTextColor={C.textSecondary}
+                    value={email}
+                    onChangeText={text => { setEmail(text); if (error) setError(''); }}
+                    onFocus={() => setFocusedField('email')}
+                    onBlur={() => setFocusedField(null)}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="next"
+                    onSubmitEditing={() => passwordRef.current?.focus()}
+                    blurOnSubmit={false}
+                    editable={!loading}
+                    testID="input-email"
+                  />
+                </View>
+              </View>
+
+              {/* ── Password ── */}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.label}>Password</Text>
+                <View style={inputStyle('password')}>
+                  <Ionicons
+                    name="lock-closed-outline"
+                    size={18}
+                    color={iconColor('password')}
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    ref={passwordRef}
+                    style={[styles.input, { flex: 1 }]}
+                    placeholder="Min. 8 characters"
+                    placeholderTextColor={C.textSecondary}
+                    value={password}
+                    onChangeText={text => { setPassword(text); if (error) setError(''); }}
+                    onFocus={() => setFocusedField('password')}
+                    onBlur={() => setFocusedField(null)}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="done"
+                    onSubmitEditing={handleRegister}
+                    editable={!loading}
+                    testID="input-password"
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowPassword(v => !v)}
+                    style={styles.eyeBtn}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                      size={18}
+                      color={C.textSecondary}
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* ── Role Selector ── */}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.label}>Role</Text>
+                <View style={styles.roleRow}>
+                  {ROLES.map(({ value, label, icon }) => {
+                    const isActive = role === value;
+                    return (
+                      <TouchableOpacity
+                        key={value}
+                        style={[
+                          styles.roleBtn,
+                          isActive && styles.roleBtnActive,
+                        ]}
+                        onPress={() => setRole(value)}
+                        disabled={loading}
+                        activeOpacity={0.8}
+                        testID={`role-${value}`}
+                      >
+                        <Ionicons
+                          name={icon}
+                          size={18}
+                          color={isActive ? '#000' : C.textSecondary}
+                          style={{ marginBottom: 2 }}
+                        />
+                        <Text style={[
+                          styles.roleBtnText,
+                          isActive && styles.roleBtnTextActive,
+                        ]}>
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* ── Submit Button ── */}
+              <TouchableOpacity
+                onPress={handleRegister}
+                disabled={loading}
+                activeOpacity={0.85}
+                style={styles.btnContainer}
+                testID="btn-register"
+              >
+                <LinearGradient
+                  colors={loading ? ['#1E3A2F', '#1E3A2F'] : [C.primary, C.primaryDark]}
+                  style={styles.btn}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                >
+                  {loading ? (
+                    <View style={styles.btnInner}>
+                      <ActivityIndicator size="small" color={C.primary} />
+                      <Text style={[styles.btnText, { color: C.primary, marginLeft: 8 }]}>
+                        Creating Account…
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={styles.btnInner}>
+                      <Text style={styles.btnText}>Register</Text>
+                      <Ionicons name="checkmark" size={18} color="#000" style={{ marginLeft: 6 }} />
+                    </View>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+
+            {/* ── Footer ── */}
+            <View style={styles.footer}>
+              <TouchableOpacity
+                onPress={() => {
+                  Keyboard.dismiss();
+                  navigation.navigate('Login');
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.signInLink}>
+                  Already have an account?{' '}
+                  <Text style={{ color: C.primary, fontWeight: '700' }}>Sign In</Text>
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </View>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   root: {
     flex: 1,
@@ -433,9 +449,7 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flexGrow: 1,
-    // Ensures content is never compressed below the visible screen height,
-    // preventing header clip when the keyboard is open on first mount.
-    minHeight: Dimensions.get('window').height,
+    minHeight: SCREEN_HEIGHT,
   },
   innerContainer: {
     flex: 1,
@@ -443,17 +457,19 @@ const styles = StyleSheet.create({
     paddingTop: 40,
     paddingBottom: 32,
   },
+
+  // Header
   header: {
     alignItems: 'center',
-    marginBottom: 28,
+    marginBottom: 30,
   },
   logoRing: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: C.primary + '40',
   },
@@ -461,24 +477,40 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: '800',
     color: C.textPrimary,
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
   tagline: {
     fontSize: 13,
     color: C.textSecondary,
     marginTop: 4,
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
+
+  // Card
   card: {
     backgroundColor: C.bgCard,
     borderRadius: 20,
-    padding: 24,
+    padding: 28,
     borderWidth: 1,
     borderColor: C.border,
   },
+  cardTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: C.textPrimary,
+    marginBottom: 6,
+  },
+  cardSubtitle: {
+    fontSize: 13,
+    color: C.textSecondary,
+    marginBottom: 24,
+    lineHeight: 19,
+  },
+
+  // Error
   errorBanner: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     backgroundColor: C.danger + '1A',
     borderWidth: 1,
     borderColor: C.danger + '50',
@@ -493,6 +525,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
+
+  // Inputs
   fieldGroup: {
     marginBottom: 16,
   },
@@ -501,6 +535,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: C.textSecondary,
     marginBottom: 8,
+    letterSpacing: 0.2,
+  },
+  optionalTag: {
+    fontWeight: '400',
+    fontSize: 11,
+    color: C.textSecondary,
+    fontStyle: 'italic',
   },
   inputWrapper: {
     flexDirection: 'row',
@@ -531,35 +572,39 @@ const styles = StyleSheet.create({
   eyeBtn: {
     padding: 4,
   },
-  roleContainer: {
+
+  // Role Selector
+  roleRow: {
     flexDirection: 'row',
     gap: 12,
   },
-  roleButton: {
+  roleBtn: {
     flex: 1,
-    flexDirection: 'row',
+    height: 50,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    backgroundColor: C.inputBg,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: C.border,
-    borderRadius: 12,
-    height: 50,
+    backgroundColor: C.inputBg,
+    flexDirection: 'row',
+    gap: 6,
   },
-  roleButtonActive: {
+  roleBtnActive: {
     backgroundColor: C.primary,
     borderColor: C.primary,
   },
-  roleButtonText: {
+  roleBtnText: {
     color: C.textSecondary,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
-  roleButtonTextActive: {
+  roleBtnTextActive: {
     color: '#000',
     fontWeight: '700',
   },
+
+  // Button
   btnContainer: {
     marginTop: 8,
     borderRadius: 14,
@@ -569,6 +614,7 @@ const styles = StyleSheet.create({
     height: 54,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 14,
   },
   btnInner: {
     flexDirection: 'row',
@@ -578,7 +624,10 @@ const styles = StyleSheet.create({
     color: '#000',
     fontSize: 16,
     fontWeight: '700',
+    letterSpacing: 0.3,
   },
+
+  // Footer
   footer: {
     alignItems: 'center',
     marginTop: 24,

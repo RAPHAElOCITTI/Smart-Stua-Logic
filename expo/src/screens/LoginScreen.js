@@ -10,17 +10,16 @@
  *  - expo-secure-store  → stores the DRF auth token (encrypted on-device)
  *  - AsyncStorage       → stores non-sensitive prefs (base URL, etc.)
  *
- * Navigation: uses React Navigation's `navigation.replace('MainApp')`
- * so the user cannot press "back" to return to Login once authenticated.
+ * Navigation: uses navigation.reset() to MainApp so the user cannot press
+ * "back" to return to Login once authenticated.
  */
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   StyleSheet,
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -33,17 +32,12 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
+import { login } from '../api';
 import { syncPushTokenWithBackend } from '../utils/notifications';
 
 // ─── Secure Storage Key ────────────────────────────────────────────────────────
-// Use this exact key when reading the token back in api.js interceptor
+// Must be identical in api.js and App.js to ensure the token round-trips correctly.
 export const SECURE_TOKEN_KEY = 'smart_stua_auth_token';
-
-// ─── API Configuration ────────────────────────────────────────────────────────
-// Production backend on Render.com.
-// Change this in Settings screen if running locally (http://192.168.x.x:8000).
-const BASE_URL = 'https://smartstua-backend.onrender.com';
-const LOGIN_ENDPOINT = `${BASE_URL}/api/auth/login/`;
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
 const C = {
@@ -60,6 +54,8 @@ const C = {
   inputBg: '#111827',
 };
 
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
 export default function LoginScreen({ navigation }) {
   // ─── Form State ─────────────────────────────────────────────────────────────
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -72,12 +68,13 @@ export default function LoginScreen({ navigation }) {
   const [focusedField, setFocusedField] = useState(null);
 
   // ─── Focus Refs ───────────────────────────────────────────────────────────────
-  // Enables keyboard's "Next" action to chain focus between fields without
-  // requiring the user to tap each input manually.
+  // Enables keyboard's "Next" action to chain focus between fields.
   const passwordRef = useRef(null);
 
   // ─── Login Handler ────────────────────────────────────────────────────────────
   const handleLogin = async () => {
+    Keyboard.dismiss();
+
     // Basic client-side validation
     if (!phoneNumber.trim()) {
       setError('Phone number is required.');
@@ -98,69 +95,56 @@ export default function LoginScreen({ navigation }) {
        * Success 200: { token: "abc123...", user: { ... } }
        * Failure 401: { error: "Invalid credentials" }
        */
-      const response = await fetch(LOGIN_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify({
-          phone_number: phoneNumber.trim(),
-          password: password,
-        }),
+      const data = await login({
+        phone_number: phoneNumber.trim(),
+        password,
       });
-
-      // Parse the JSON body regardless of status so we can read error messages
-      const data = await response.json();
-
-      if (!response.ok) {
-        // 401 Unauthorized, 400 Bad Request, etc.
-        // Django returns { "error": "..." } — surface this to the user
-        throw new Error(
-          data.error || data.detail || `Login failed (${response.status})`
-        );
-      }
 
       // ── Secure Token Storage ──────────────────────────────────────────────
       // expo-secure-store encrypts values using the device's secure enclave
       // (Keychain on iOS, EncryptedSharedPreferences on Android).
-      // Values are base64-encoded strings — must be a string, not an object.
-      if (data.token) {
-        await SecureStore.setItemAsync(SECURE_TOKEN_KEY, data.token);
+      const token = data.token || data.access || data.key;
+      if (token) {
+        await SecureStore.setItemAsync(SECURE_TOKEN_KEY, token);
       } else {
-        // Fallback: some DRF setups nest token as data.access (JWT) or data.key
-        const token = data.access || data.key;
-        if (token) {
-          await SecureStore.setItemAsync(SECURE_TOKEN_KEY, token);
-        } else {
-          throw new Error('No authentication token received from server.');
-        }
+        throw new Error('No authentication token received from server.');
       }
 
-      // Sync the push token with the backend asynchronously (don't block navigation)
-      syncPushTokenWithBackend();
+      // Sync push token asynchronously — fire-and-forget, never block navigation
+      syncPushTokenWithBackend().catch(() => { });
 
       // ── Navigation Handoff ────────────────────────────────────────────────
-      // `replace` removes LoginScreen from the stack so back-press goes to OS home,
-      // not back to the login form. `reset` is the most robust option for auth flows.
+      // `reset` removes LoginScreen from the stack so back-press goes to OS home.
       navigation.reset({
         index: 0,
         routes: [{ name: 'MainApp' }],
       });
 
     } catch (err) {
-      // Catches both network failures (no internet / wrong IP) and API errors
-      if (err.message === 'Network request failed') {
-        setError(
-          'Cannot reach the server. Check your Wi-Fi and ensure the backend is running.'
-        );
+      // Surface backend error message (DRF returns { "error": "..." })
+      const msg =
+        err?.response?.data?.error ||
+        err?.response?.data?.detail ||
+        err?.message;
+
+      if (!msg || msg === 'Network request failed' || msg.includes('network')) {
+        setError('Cannot reach the server. Check your Wi-Fi and ensure the backend is running.');
       } else {
-        setError(err.message);
+        setError(msg);
       }
     } finally {
       setLoading(false);
     }
   };
+
+  // ─── Focus helpers ────────────────────────────────────────────────────────────
+  const inputStyle = (field) => [
+    styles.inputWrapper,
+    focusedField === field && styles.inputWrapperFocused,
+  ];
+
+  const iconColor = (field) =>
+    focusedField === field ? C.primary : C.textSecondary;
 
   // ─── Render ───────────────────────────────────────────────────────────────────
   return (
@@ -169,7 +153,7 @@ export default function LoginScreen({ navigation }) {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
       >
         <ScrollView
@@ -180,178 +164,167 @@ export default function LoginScreen({ navigation }) {
           overScrollMode="never"
         >
           <View style={styles.innerContainer}>
-              {/* ── Header / Branding ── */}
-              <View style={styles.header}>
-                <LinearGradient
-                  colors={[C.primary + '33', C.accent + '1A']}
-                  style={styles.logoRing}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  <Ionicons name="leaf" size={36} color={C.primary} />
-                </LinearGradient>
 
-                <Text style={styles.appName}>Smart-Stua</Text>
-                <Text style={styles.tagline}>Aflatoxin Prevention System</Text>
-              </View>
+            {/* ── Header / Branding ── */}
+            <View style={styles.header}>
+              <LinearGradient
+                colors={[C.primary + '33', C.accent + '1A']}
+                style={styles.logoRing}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Ionicons name="leaf" size={40} color={C.primary} />
+              </LinearGradient>
 
-              {/* ── Card ── */}
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>Sign In</Text>
-                <Text style={styles.cardSubtitle}>
-                  Enter your credentials to access the monitoring dashboard
-                </Text>
-
-                {/* ── Error Banner ── */}
-                {!!error && (
-                  <View style={styles.errorBanner}>
-                    <Ionicons name="alert-circle" size={16} color={C.danger} />
-                    <Text style={styles.errorText}>{error}</Text>
-                  </View>
-                )}
-
-                {/* ── Phone Number Field ── */}
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.label}>Phone number</Text>
-                  <View
-                    style={[
-                      styles.inputWrapper,
-                      focusedField === 'phone' && styles.inputWrapperFocused,
-                    ]}
-                  >
-                    <Ionicons
-                      name="call-outline"
-                      size={18}
-                      color={focusedField === 'phone' ? C.primary : C.textSecondary}
-                      style={styles.inputIcon}
-                    />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="+254 700 000 000"
-                      placeholderTextColor={C.textSecondary}
-                      value={phoneNumber}
-                      onChangeText={text => {
-                        setPhoneNumber(text);
-                        if (error) setError('');
-                      }}
-                      onFocus={() => setFocusedField('phone')}
-                      onBlur={() => setFocusedField(null)}
-                      keyboardType="phone-pad"
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      returnKeyType="next"
-                      onSubmitEditing={() => passwordRef.current?.focus()}
-                      blurOnSubmit={false}
-                      editable={!loading}
-                      testID="input-phone"
-                    />
-                  </View>
-                </View>
-
-                {/* ── Password Field ── */}
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.label}>Password</Text>
-                  <View
-                    style={[
-                      styles.inputWrapper,
-                      focusedField === 'password' && styles.inputWrapperFocused,
-                    ]}
-                  >
-                    <Ionicons
-                      name="lock-closed-outline"
-                      size={18}
-                      color={focusedField === 'password' ? C.primary : C.textSecondary}
-                      style={styles.inputIcon}
-                    />
-                    <TextInput
-                      ref={passwordRef}
-                      style={[styles.input, { flex: 1 }]}
-                      placeholder="••••••••"
-                      placeholderTextColor={C.textSecondary}
-                      value={password}
-                      onChangeText={text => {
-                        setPassword(text);
-                        if (error) setError('');
-                      }}
-                      onFocus={() => setFocusedField('password')}
-                      onBlur={() => setFocusedField(null)}
-                      secureTextEntry={!showPassword}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      returnKeyType="done"
-                      onSubmitEditing={handleLogin}
-                      editable={!loading}
-                      testID="input-password"
-                    />
-                    <TouchableOpacity
-                      onPress={() => setShowPassword(v => !v)}
-                      style={styles.eyeBtn}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Ionicons
-                        name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                        size={18}
-                        color={C.textSecondary}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* ── Submit Button ── */}
-                <TouchableOpacity
-                  onPress={handleLogin}
-                  disabled={loading}
-                  activeOpacity={0.85}
-                  style={styles.btnContainer}
-                  testID="btn-login"
-                >
-                  <LinearGradient
-                    colors={loading ? ['#1E3A2F', '#1E3A2F'] : [C.primary, C.primaryDark]}
-                    style={styles.btn}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                  >
-                    {loading ? (
-                      <View style={styles.btnInner}>
-                        <ActivityIndicator size="small" color={C.primary} />
-                        <Text style={[styles.btnText, { color: C.primary, marginLeft: 8 }]}>
-                          Signing In…
-                        </Text>
-                      </View>
-                    ) : (
-                      <View style={styles.btnInner}>
-                        <Text style={styles.btnText}>Sign In</Text>
-                        <Ionicons name="arrow-forward" size={18} color="#000" style={{ marginLeft: 6 }} />
-                      </View>
-                    )}
-                  </LinearGradient>
-                </TouchableOpacity>
-              </View>
-
-              {/* ── Footer ── */}
-              <View style={styles.footer}>
-                <TouchableOpacity
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    navigation.navigate('SignUp');
-                  }}
-                  style={{ marginBottom: 12 }}
-                >
-                  <Text style={{ color: C.textSecondary, fontSize: 14 }}>
-                    Don't have an account? <Text style={{ color: C.primary, fontWeight: '700' }}>Sign Up</Text>
-                  </Text>
-                </TouchableOpacity>
-
-                <View style={styles.securityBadge}>
-                  <Ionicons name="shield-checkmark-outline" size={13} color={C.primary} />
-                  <Text style={styles.securityText}>Encrypted secure storage</Text>
-                </View>
-                <Text style={styles.footerNote}>
-                  Access restricted to authorized personnel only
-                </Text>
-              </View>
+              <Text style={styles.appName}>Smart-Stua</Text>
+              <Text style={styles.tagline}>Aflatoxin Prevention System</Text>
             </View>
-          </ScrollView>
+
+            {/* ── Card ── */}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Sign In</Text>
+              <Text style={styles.cardSubtitle}>
+                Enter your credentials to access the monitoring dashboard
+              </Text>
+
+              {/* ── Error Banner ── */}
+              {!!error && (
+                <View style={styles.errorBanner}>
+                  <Ionicons name="alert-circle" size={16} color={C.danger} />
+                  <Text style={styles.errorText}>{error}</Text>
+                </View>
+              )}
+
+              {/* ── Phone Number Field ── */}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.label}>Phone Number</Text>
+                <View style={inputStyle('phone')}>
+                  <Ionicons
+                    name="call-outline"
+                    size={18}
+                    color={iconColor('phone')}
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="+256 700 000 000"
+                    placeholderTextColor={C.textSecondary}
+                    value={phoneNumber}
+                    onChangeText={text => { setPhoneNumber(text); if (error) setError(''); }}
+                    onFocus={() => setFocusedField('phone')}
+                    onBlur={() => setFocusedField(null)}
+                    keyboardType="phone-pad"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="next"
+                    onSubmitEditing={() => passwordRef.current?.focus()}
+                    blurOnSubmit={false}
+                    editable={!loading}
+                    testID="input-phone"
+                  />
+                </View>
+              </View>
+
+              {/* ── Password Field ── */}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.label}>Password</Text>
+                <View style={inputStyle('password')}>
+                  <Ionicons
+                    name="lock-closed-outline"
+                    size={18}
+                    color={iconColor('password')}
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    ref={passwordRef}
+                    style={[styles.input, { flex: 1 }]}
+                    placeholder="••••••••"
+                    placeholderTextColor={C.textSecondary}
+                    value={password}
+                    onChangeText={text => { setPassword(text); if (error) setError(''); }}
+                    onFocus={() => setFocusedField('password')}
+                    onBlur={() => setFocusedField(null)}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="done"
+                    onSubmitEditing={handleLogin}
+                    editable={!loading}
+                    testID="input-password"
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowPassword(v => !v)}
+                    style={styles.eyeBtn}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                      size={18}
+                      color={C.textSecondary}
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* ── Submit Button ── */}
+              <TouchableOpacity
+                onPress={handleLogin}
+                disabled={loading}
+                activeOpacity={0.85}
+                style={styles.btnContainer}
+                testID="btn-login"
+              >
+                <LinearGradient
+                  colors={loading ? ['#1E3A2F', '#1E3A2F'] : [C.primary, C.primaryDark]}
+                  style={styles.btn}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                >
+                  {loading ? (
+                    <View style={styles.btnInner}>
+                      <ActivityIndicator size="small" color={C.primary} />
+                      <Text style={[styles.btnText, { color: C.primary, marginLeft: 8 }]}>
+                        Signing In…
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={styles.btnInner}>
+                      <Text style={styles.btnText}>Sign In</Text>
+                      <Ionicons name="arrow-forward" size={18} color="#000" style={{ marginLeft: 6 }} />
+                    </View>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+
+            {/* ── Footer ── */}
+            <View style={styles.footer}>
+              <TouchableOpacity
+                onPress={() => {
+                  Keyboard.dismiss();
+                  navigation.navigate('SignUp');
+                }}
+                style={{ marginBottom: 12 }}
+                activeOpacity={0.7}
+              >
+                <Text style={{ color: C.textSecondary, fontSize: 14 }}>
+                  Don't have an account?{' '}
+                  <Text style={{ color: C.primary, fontWeight: '700' }}>Sign Up</Text>
+                </Text>
+              </TouchableOpacity>
+
+              <View style={styles.securityBadge}>
+                <Ionicons name="shield-checkmark-outline" size={13} color={C.primary} />
+                <Text style={styles.securityText}>Encrypted secure storage</Text>
+              </View>
+              <Text style={styles.footerNote}>
+                Access restricted to authorized personnel only
+              </Text>
+            </View>
+
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </View>
   );
@@ -365,9 +338,7 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flexGrow: 1,
-    // Ensures content is never compressed below the visible screen height,
-    // preventing header clip when the keyboard is open on first mount.
-    minHeight: Dimensions.get('window').height,
+    minHeight: SCREEN_HEIGHT,
   },
   innerContainer: {
     flex: 1,
@@ -382,17 +353,17 @@ const styles = StyleSheet.create({
     marginBottom: 36,
   },
   logoRing: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 88,
+    height: 88,
+    borderRadius: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 18,
     borderWidth: 1,
     borderColor: C.primary + '40',
   },
   appName: {
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: '800',
     color: C.textPrimary,
     letterSpacing: 0.5,
