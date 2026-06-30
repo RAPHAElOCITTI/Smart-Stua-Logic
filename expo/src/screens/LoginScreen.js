@@ -14,7 +14,7 @@
  * so the user cannot press "back" to return to Login once authenticated.
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -28,6 +28,7 @@ import {
   Platform,
   ScrollView,
   StatusBar,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -168,7 +169,7 @@ export default function LoginScreen({ navigation }) {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
       >
         <ScrollView
@@ -176,6 +177,7 @@ export default function LoginScreen({ navigation }) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           bounces={false}
+          overScrollMode="never"
         >
           <View style={styles.innerContainer}>
               {/* ── Header / Branding ── */}
@@ -328,7 +330,13 @@ export default function LoginScreen({ navigation }) {
 
               {/* ── Footer ── */}
               <View style={styles.footer}>
-                <TouchableOpacity onPress={() => navigation.navigate('SignUp')} style={{ marginBottom: 12 }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    navigation.navigate('SignUp');
+                  }}
+                  style={{ marginBottom: 12 }}
+                >
                   <Text style={{ color: C.textSecondary, fontSize: 14 }}>
                     Don't have an account? <Text style={{ color: C.primary, fontWeight: '700' }}>Sign Up</Text>
                   </Text>
@@ -357,9 +365,12 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flexGrow: 1,
+    // Ensures content is never compressed below the visible screen height,
+    // preventing header clip when the keyboard is open on first mount.
+    minHeight: Dimensions.get('window').height,
   },
   innerContainer: {
-    flexGrow: 1,
+    flex: 1,
     paddingHorizontal: 24,
     paddingTop: 48,
     paddingBottom: 32,

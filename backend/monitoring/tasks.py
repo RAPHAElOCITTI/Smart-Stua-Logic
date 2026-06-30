@@ -40,16 +40,20 @@ def process_sensor_data(self, reading_id: int):
     ari_result = calculate_ari(
         temperature=reading.temperature_c,
         humidity=reading.humidity_pct,
+        moisture_pct=reading.moisture_pct,
         duration_hours=duration_hours,
     )
 
     ari_score  = ari_result['ari_score']
     risk_level = ari_result['risk_level']
+    moisture_override = ari_result.get('moisture_override', False)
 
     logger.info(
         f'[ARI] Node={node.node_identifier} '
         f'T={reading.temperature_c}°C H={reading.humidity_pct}% '
+        f'MC={reading.moisture_pct}% '
         f'Duration={duration_hours:.1f}h → ARI={ari_score:.1f} ({risk_level})'
+        + (' [MOISTURE OVERRIDE]' if moisture_override else '')
     )
 
     if ari_score >= RISK_MEDIUM_THRESHOLD:
@@ -69,17 +73,34 @@ def process_sensor_data(self, reading_id: int):
             send_sms_alert.delay(alert.alert_id)
             send_push_alert.delay(alert.alert_id)
 
+        # ── Automatic Dryer Control ──────────────────────────────────────────
+        # ARI >= 70  (High Risk OR moisture override) → turn dryer ON
+        # ARI in [30, 70) (Medium)                   → keep dryer in current state
         if ari_score >= RISK_HIGH_THRESHOLD:
-            send_dryer_command.delay(node.node_id, 'ON')
-            logger.warning(f'[DRYER] HIGH RISK at {node.node_identifier} — dryer command queued')
+            if node.pending_command != 'ON':
+                send_dryer_command.delay(node.node_id, 'ON')
+                reason = 'moisture override' if moisture_override else f'ARI={ari_score:.1f}'
+                logger.warning(
+                    f'[DRYER] HIGH RISK at {node.node_identifier} ({reason}) '
+                    f'— dryer ON command queued'
+                )
+            else:
+                logger.info(f'[DRYER] HIGH RISK at {node.node_identifier} — dryer already ON')
         else:
-            if node.pending_command == 'ON':
-                logger.info(f'[DRYER] Medium risk at {node.node_identifier} — dryer stays ON')
+            # Medium risk: dryer stays in whatever state it is
+            logger.info(
+                f'[DRYER] MEDIUM RISK at {node.node_identifier} '
+                f'(ARI={ari_score:.1f}) — dryer unchanged ({node.pending_command})'
+            )
 
     else:
+        # Risk cleared (Low): automatically turn dryer OFF
         if node.pending_command == 'ON':
             send_dryer_command.delay(node.node_id, 'OFF')
-            logger.info(f'[DRYER] Risk cleared at {node.node_identifier} — dryer OFF command queued')
+            logger.info(
+                f'[DRYER] Risk cleared at {node.node_identifier} '
+                f'(ARI={ari_score:.1f}) — dryer OFF command queued'
+            )
 
     # Threshold breach checks
     if hasattr(node, 'threshold') and node.threshold:
@@ -291,7 +312,12 @@ def _get_continuous_risk_duration(node) -> float:
     prev_ts = None
 
     for reading in readings:
-        ari = calculate_ari(reading.temperature_c, reading.humidity_pct, 0.0)
+        ari = calculate_ari(
+            reading.temperature_c,
+            reading.humidity_pct,
+            moisture_pct=reading.moisture_pct,
+            duration_hours=0.0,
+        )
         is_risky = ari['ari_score'] >= RISK_MEDIUM_THRESHOLD
         if is_risky:
             if prev_ts and (prev_ts - reading.recorded_at).total_seconds() > 1800:

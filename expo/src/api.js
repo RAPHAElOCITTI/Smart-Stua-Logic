@@ -201,27 +201,24 @@ export const getRiskIcon = riskLevel => {
 };
 
 // ─── Moisture Utilities (Feature 1) ──────────────────────────────────────────
-// Thresholds based on FAO grain storage guidance:
-//   < 5%  → sensor likely disconnected (red)
-//   5–40  → below safe range / critically dry (red)
-//   40–65 → optimal / safe (green)
-//   65–80 → elevated risk (orange)
-//   > 80  → critical — immediate drying required (red)
+// Thresholds aligned with backend's agricultural and safety floor standards:
+//   < 5%       → sensor likely disconnected or extremely low reading (gray)
+//   5% - 13.5% → optimal / safe storage level (green)
+//   13.5% - 14.5% → elevated risk (orange)
+//   >= 14.5%   → critical — triggers safety floor override & dryer activation (red)
 export const getMoistureColor = (pct) => {
   if (pct === null || pct === undefined) return '#8E8E93'; // unknown
-  if (pct < 5) return '#FF3B30';  // sensor likely disconnected
-  if (pct < 40) return '#FF3B30';  // critically dry
-  if (pct < 65) return '#00D26A';  // safe / optimal
-  if (pct < 80) return '#FF9500';  // elevated
-  return '#FF3B30';                  // critical
+  if (pct < 5) return '#8E8E93';  // sensor likely disconnected / low reading
+  if (pct <= 13.5) return '#00D26A';  // safe / optimal (green)
+  if (pct < 14.5) return '#FF9500';  // elevated risk (orange)
+  return '#FF3B30';                  // critical / wet (red)
 };
 
 export const getMoistureLabel = (pct) => {
   if (pct === null || pct === undefined) return 'Unknown';
   if (pct < 5) return 'Check Sensor';
-  if (pct < 40) return 'Critically Dry';
-  if (pct < 65) return 'Optimal';
-  if (pct < 80) return 'Elevated';
+  if (pct <= 13.5) return 'Optimal';
+  if (pct < 14.5) return 'Elevated';
   return 'Critical';
 };
 

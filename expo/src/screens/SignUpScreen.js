@@ -20,6 +20,7 @@ import {
   ScrollView,
   StatusBar,
   Alert,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -126,7 +127,7 @@ export default function SignUpScreen({ navigation }) {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
       >
         <ScrollView
@@ -134,6 +135,7 @@ export default function SignUpScreen({ navigation }) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           bounces={false}
+          overScrollMode="never"
         >
           <View style={styles.innerContainer}>
               {/* ── Header ── */}
@@ -406,7 +408,12 @@ export default function SignUpScreen({ navigation }) {
 
               {/* ── Footer Link ── */}
               <View style={styles.footer}>
-                <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+                <TouchableOpacity
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    navigation.navigate('Login');
+                  }}
+                >
                   <Text style={styles.signInLink}>
                     Already have an account? <Text style={{ color: C.primary, fontWeight: '700' }}>Sign In</Text>
                   </Text>
@@ -426,9 +433,12 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flexGrow: 1,
+    // Ensures content is never compressed below the visible screen height,
+    // preventing header clip when the keyboard is open on first mount.
+    minHeight: Dimensions.get('window').height,
   },
   innerContainer: {
-    flexGrow: 1,
+    flex: 1,
     paddingHorizontal: 24,
     paddingTop: 40,
     paddingBottom: 32,

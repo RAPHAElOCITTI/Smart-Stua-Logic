@@ -200,7 +200,11 @@ def device_latest(request, node_id):
             status=status.HTTP_404_NOT_FOUND,
         )
 
-    ari_result = calculate_ari(reading.temperature_c, reading.humidity_pct)
+    ari_result = calculate_ari(
+        reading.temperature_c,
+        reading.humidity_pct,
+        moisture_pct=reading.moisture_pct,
+    )
     return Response({
         'node_id': node.node_id,
         'node_identifier': node.node_identifier,
@@ -269,7 +273,11 @@ def dashboard_summary(request):
     for node in nodes:
         latest = Reading.objects.filter(node=node).order_by('-recorded_at').first()
         if latest:
-            ari_result = calculate_ari(latest.temperature_c, latest.humidity_pct)
+            ari_result = calculate_ari(
+                latest.temperature_c,
+                latest.humidity_pct,
+                moisture_pct=latest.moisture_pct,
+            )
             entry = {
                 'node_id':         node.node_id,
                 'node_identifier': node.node_identifier,
