@@ -151,183 +151,355 @@ export default function LoginScreen({ navigation }) {
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={C.bg} />
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
-      >
-        <ScrollView
-          contentContainerStyle={
-            Platform.OS === 'ios' ? styles.scrollIOS : styles.scrollAndroid
-          }
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          bounces={false}
-          overScrollMode="never"
+      {Platform.OS === 'ios' ? (
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior="padding"
+          keyboardVerticalOffset={20}
         >
-          <View style={styles.innerContainer}>
+          <ScrollView
+            contentContainerStyle={styles.scrollIOS}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+            overScrollMode="never"
+          >
+            <View style={styles.innerContainer}>
 
-            {/* ── Header / Branding ── */}
-            <View style={styles.header}>
-              <LinearGradient
-                colors={[C.primary + '33', C.accent + '1A']}
-                style={styles.logoRing}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <Ionicons name="leaf" size={40} color={C.primary} />
-              </LinearGradient>
-
-              <Text style={styles.appName}>Smart-Stua</Text>
-              <Text style={styles.tagline}>Aflatoxin Prevention System</Text>
-            </View>
-
-            {/* ── Card ── */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Sign In</Text>
-              <Text style={styles.cardSubtitle}>
-                Enter your credentials to access the monitoring dashboard
-              </Text>
-
-              {/* ── Error Banner ── */}
-              {!!error && (
-                <View style={styles.errorBanner}>
-                  <Ionicons name="alert-circle" size={16} color={C.danger} />
-                  <Text style={styles.errorText}>{error}</Text>
-                </View>
-              )}
-
-              {/* ── Phone Number Field ── */}
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>Phone Number</Text>
-                <View style={inputStyle('phone')}>
-                  <Ionicons
-                    name="call-outline"
-                    size={18}
-                    color={iconColor('phone')}
-                    style={styles.inputIcon}
-                  />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="+256 700 000 000"
-                    placeholderTextColor={C.textSecondary}
-                    value={phoneNumber}
-                    onChangeText={text => { setPhoneNumber(text); if (error) setError(''); }}
-                    onFocus={() => setFocusedField('phone')}
-                    onBlur={() => setFocusedField(null)}
-                    keyboardType="phone-pad"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    returnKeyType="next"
-                    onSubmitEditing={() => passwordRef.current?.focus()}
-                    blurOnSubmit={false}
-                    editable={!loading}
-                    testID="input-phone"
-                  />
-                </View>
-              </View>
-
-              {/* ── Password Field ── */}
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>Password</Text>
-                <View style={inputStyle('password')}>
-                  <Ionicons
-                    name="lock-closed-outline"
-                    size={18}
-                    color={iconColor('password')}
-                    style={styles.inputIcon}
-                  />
-                  <TextInput
-                    ref={passwordRef}
-                    style={[styles.input, { flex: 1 }]}
-                    placeholder="••••••••"
-                    placeholderTextColor={C.textSecondary}
-                    value={password}
-                    onChangeText={text => { setPassword(text); if (error) setError(''); }}
-                    onFocus={() => setFocusedField('password')}
-                    onBlur={() => setFocusedField(null)}
-                    secureTextEntry={!showPassword}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    returnKeyType="done"
-                    onSubmitEditing={handleLogin}
-                    editable={!loading}
-                    testID="input-password"
-                  />
-                  <TouchableOpacity
-                    onPress={() => setShowPassword(v => !v)}
-                    style={styles.eyeBtn}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons
-                      name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                      size={18}
-                      color={C.textSecondary}
-                    />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* ── Submit Button ── */}
-              <TouchableOpacity
-                onPress={handleLogin}
-                disabled={loading}
-                activeOpacity={0.85}
-                style={styles.btnContainer}
-                testID="btn-login"
-              >
+              {/* ── Header / Branding ── */}
+              <View style={styles.header}>
                 <LinearGradient
-                  colors={loading ? ['#1E3A2F', '#1E3A2F'] : [C.primary, C.primaryDark]}
-                  style={styles.btn}
+                  colors={[C.primary + '33', C.accent + '1A']}
+                  style={styles.logoRing}
                   start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
+                  end={{ x: 1, y: 1 }}
                 >
-                  {loading ? (
-                    <View style={styles.btnInner}>
-                      <ActivityIndicator size="small" color={C.primary} />
-                      <Text style={[styles.btnText, { color: C.primary, marginLeft: 8 }]}>
-                        Signing In…
-                      </Text>
-                    </View>
-                  ) : (
-                    <View style={styles.btnInner}>
-                      <Text style={styles.btnText}>Sign In</Text>
-                      <Ionicons name="arrow-forward" size={18} color="#000" style={{ marginLeft: 6 }} />
-                    </View>
-                  )}
+                  <Ionicons name="leaf" size={40} color={C.primary} />
                 </LinearGradient>
-              </TouchableOpacity>
-            </View>
 
-            {/* ── Footer ── */}
-            <View style={styles.footer}>
-              <TouchableOpacity
-                onPress={() => {
-                  Keyboard.dismiss();
-                  navigation.navigate('SignUp');
-                }}
-                style={{ marginBottom: 12 }}
-                activeOpacity={0.7}
-              >
-                <Text style={{ color: C.textSecondary, fontSize: 14 }}>
-                  Don't have an account?{' '}
-                  <Text style={{ color: C.primary, fontWeight: '700' }}>Sign Up</Text>
-                </Text>
-              </TouchableOpacity>
-
-              <View style={styles.securityBadge}>
-                <Ionicons name="shield-checkmark-outline" size={13} color={C.primary} />
-                <Text style={styles.securityText}>Encrypted secure storage</Text>
+                <Text style={styles.appName}>Smart-Stua</Text>
+                <Text style={styles.tagline}>Aflatoxin Prevention System</Text>
               </View>
-              <Text style={styles.footerNote}>
-                Access restricted to authorized personnel only
-              </Text>
-            </View>
 
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+              {/* ── Card ── */}
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Sign In</Text>
+                <Text style={styles.cardSubtitle}>
+                  Enter your credentials to access the monitoring dashboard
+                </Text>
+
+                {/* ── Error Banner ── */}
+                {!!error && (
+                  <View style={styles.errorBanner}>
+                    <Ionicons name="alert-circle" size={16} color={C.danger} />
+                    <Text style={styles.errorText}>{error}</Text>
+                  </View>
+                )}
+
+                {/* ── Phone Number Field ── */}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>Phone Number</Text>
+                  <View style={inputStyle('phone')}>
+                    <Ionicons
+                      name="call-outline"
+                      size={18}
+                      color={iconColor('phone')}
+                      style={styles.inputIcon}
+                    />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="+256 700 000 000"
+                      placeholderTextColor={C.textSecondary}
+                      value={phoneNumber}
+                      onChangeText={text => { setPhoneNumber(text); if (error) setError(''); }}
+                      onFocus={() => setFocusedField('phone')}
+                      onBlur={() => setFocusedField(null)}
+                      keyboardType="phone-pad"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      returnKeyType="next"
+                      onSubmitEditing={() => passwordRef.current?.focus()}
+                      blurOnSubmit={false}
+                      editable={!loading}
+                      testID="input-phone"
+                    />
+                  </View>
+                </View>
+
+                {/* ── Password Field ── */}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>Password</Text>
+                  <View style={inputStyle('password')}>
+                    <Ionicons
+                      name="lock-closed-outline"
+                      size={18}
+                      color={iconColor('password')}
+                      style={styles.inputIcon}
+                    />
+                    <TextInput
+                      ref={passwordRef}
+                      style={[styles.input, { flex: 1 }]}
+                      placeholder="••••••••"
+                      placeholderTextColor={C.textSecondary}
+                      value={password}
+                      onChangeText={text => { setPassword(text); if (error) setError(''); }}
+                      onFocus={() => setFocusedField('password')}
+                      onBlur={() => setFocusedField(null)}
+                      secureTextEntry={!showPassword}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      returnKeyType="done"
+                      onSubmitEditing={handleLogin}
+                      editable={!loading}
+                      testID="input-password"
+                    />
+                    <TouchableOpacity
+                      onPress={() => setShowPassword(v => !v)}
+                      style={styles.eyeBtn}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                        size={18}
+                        color={C.textSecondary}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* ── Submit Button ── */}
+                <TouchableOpacity
+                  onPress={handleLogin}
+                  disabled={loading}
+                  activeOpacity={0.85}
+                  style={styles.btnContainer}
+                  testID="btn-login"
+                >
+                  <LinearGradient
+                    colors={loading ? ['#1E3A2F', '#1E3A2F'] : [C.primary, C.primaryDark]}
+                    style={styles.btn}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                  >
+                    {loading ? (
+                      <View style={styles.btnInner}>
+                        <ActivityIndicator size="small" color={C.primary} />
+                        <Text style={[styles.btnText, { color: C.primary, marginLeft: 8 }]}>
+                          Signing In…
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={styles.btnInner}>
+                        <Text style={styles.btnText}>Sign In</Text>
+                        <Ionicons name="arrow-forward" size={18} color="#000" style={{ marginLeft: 6 }} />
+                      </View>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+
+              {/* ── Footer ── */}
+              <View style={styles.footer}>
+                <TouchableOpacity
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    navigation.navigate('SignUp');
+                  }}
+                  style={{ marginBottom: 12 }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ color: C.textSecondary, fontSize: 14 }}>
+                    Don't have an account?{' '}
+                    <Text style={{ color: C.primary, fontWeight: '700' }}>Sign Up</Text>
+                  </Text>
+                </TouchableOpacity>
+
+                <View style={styles.securityBadge}>
+                  <Ionicons name="shield-checkmark-outline" size={13} color={C.primary} />
+                  <Text style={styles.securityText}>Encrypted secure storage</Text>
+                </View>
+                <Text style={styles.footerNote}>
+                  Access restricted to authorized personnel only
+                </Text>
+              </View>
+
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      ) : (
+        <View style={{ flex: 1 }}>
+          <ScrollView
+            contentContainerStyle={styles.scrollAndroid}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+            overScrollMode="never"
+          >
+            <View style={styles.innerContainer}>
+
+              {/* ── Header / Branding ── */}
+              <View style={styles.header}>
+                <LinearGradient
+                  colors={[C.primary + '33', C.accent + '1A']}
+                  style={styles.logoRing}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <Ionicons name="leaf" size={40} color={C.primary} />
+                </LinearGradient>
+
+                <Text style={styles.appName}>Smart-Stua</Text>
+                <Text style={styles.tagline}>Aflatoxin Prevention System</Text>
+              </View>
+
+              {/* ── Card ── */}
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Sign In</Text>
+                <Text style={styles.cardSubtitle}>
+                  Enter your credentials to access the monitoring dashboard
+                </Text>
+
+                {/* ── Error Banner ── */}
+                {!!error && (
+                  <View style={styles.errorBanner}>
+                    <Ionicons name="alert-circle" size={16} color={C.danger} />
+                    <Text style={styles.errorText}>{error}</Text>
+                  </View>
+                )}
+
+                {/* ── Phone Number Field ── */}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>Phone Number</Text>
+                  <View style={inputStyle('phone')}>
+                    <Ionicons
+                      name="call-outline"
+                      size={18}
+                      color={iconColor('phone')}
+                      style={styles.inputIcon}
+                    />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="+256 700 000 000"
+                      placeholderTextColor={C.textSecondary}
+                      value={phoneNumber}
+                      onChangeText={text => { setPhoneNumber(text); if (error) setError(''); }}
+                      onFocus={() => setFocusedField('phone')}
+                      onBlur={() => setFocusedField(null)}
+                      keyboardType="phone-pad"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      returnKeyType="next"
+                      onSubmitEditing={() => passwordRef.current?.focus()}
+                      blurOnSubmit={false}
+                      editable={!loading}
+                      testID="input-phone"
+                    />
+                  </View>
+                </View>
+
+                {/* ── Password Field ── */}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>Password</Text>
+                  <View style={inputStyle('password')}>
+                    <Ionicons
+                      name="lock-closed-outline"
+                      size={18}
+                      color={iconColor('password')}
+                      style={styles.inputIcon}
+                    />
+                    <TextInput
+                      ref={passwordRef}
+                      style={[styles.input, { flex: 1 }]}
+                      placeholder="••••••••"
+                      placeholderTextColor={C.textSecondary}
+                      value={password}
+                      onChangeText={text => { setPassword(text); if (error) setError(''); }}
+                      onFocus={() => setFocusedField('password')}
+                      onBlur={() => setFocusedField(null)}
+                      secureTextEntry={!showPassword}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      returnKeyType="done"
+                      onSubmitEditing={handleLogin}
+                      editable={!loading}
+                      testID="input-password"
+                    />
+                    <TouchableOpacity
+                      onPress={() => setShowPassword(v => !v)}
+                      style={styles.eyeBtn}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                        size={18}
+                        color={C.textSecondary}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* ── Submit Button ── */}
+                <TouchableOpacity
+                  onPress={handleLogin}
+                  disabled={loading}
+                  activeOpacity={0.85}
+                  style={styles.btnContainer}
+                  testID="btn-login"
+                >
+                  <LinearGradient
+                    colors={loading ? ['#1E3A2F', '#1E3A2F'] : [C.primary, C.primaryDark]}
+                    style={styles.btn}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                  >
+                    {loading ? (
+                      <View style={styles.btnInner}>
+                        <ActivityIndicator size="small" color={C.primary} />
+                        <Text style={[styles.btnText, { color: C.primary, marginLeft: 8 }]}>
+                          Signing In…
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={styles.btnInner}>
+                        <Text style={styles.btnText}>Sign In</Text>
+                        <Ionicons name="arrow-forward" size={18} color="#000" style={{ marginLeft: 6 }} />
+                      </View>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+
+              {/* ── Footer ── */}
+              <View style={styles.footer}>
+                <TouchableOpacity
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    navigation.navigate('SignUp');
+                  }}
+                  style={{ marginBottom: 12 }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ color: C.textSecondary, fontSize: 14 }}>
+                    Don't have an account?{' '}
+                    <Text style={{ color: C.primary, fontWeight: '700' }}>Sign Up</Text>
+                  </Text>
+                </TouchableOpacity>
+
+                <View style={styles.securityBadge}>
+                  <Ionicons name="shield-checkmark-outline" size={13} color={C.primary} />
+                  <Text style={styles.securityText}>Encrypted secure storage</Text>
+                </View>
+                <Text style={styles.footerNote}>
+                  Access restricted to authorized personnel only
+                </Text>
+              </View>
+
+            </View>
+          </ScrollView>
+        </View>
+      )}
     </View>
   );
 }

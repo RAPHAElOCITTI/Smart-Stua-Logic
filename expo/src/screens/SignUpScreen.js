@@ -171,274 +171,425 @@ export default function SignUpScreen({ navigation }) {
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={C.bg} />
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
-      >
-        <ScrollView
-          contentContainerStyle={
-            Platform.OS === 'ios' ? styles.scrollIOS : styles.scrollAndroid
-          }
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          bounces={false}
-          overScrollMode="never"
+      {Platform.OS === 'ios' ? (
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior="padding"
+          keyboardVerticalOffset={20}
         >
-          <View style={styles.innerContainer}>
+          <ScrollView
+            contentContainerStyle={styles.scrollIOS}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+            overScrollMode="never"
+          >
+            <View style={styles.innerContainer}>
 
-            {/* ── Header / Branding ── */}
-            <View style={styles.header}>
-              <LinearGradient
-                colors={[C.primary + '33', C.accent + '1A']}
-                style={styles.logoRing}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <Ionicons name="person-add" size={32} color={C.primary} />
-              </LinearGradient>
-
-              <Text style={styles.appName}>Create Account</Text>
-              <Text style={styles.tagline}>Smart-Stua Monitoring Network</Text>
-            </View>
-
-            {/* ── Card ── */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Register</Text>
-              <Text style={styles.cardSubtitle}>
-                Join the Smart-Stua platform to monitor your grain storage
-              </Text>
-
-              {/* ── Error Banner ── */}
-              {!!error && (
-                <View style={styles.errorBanner}>
-                  <Ionicons name="alert-circle" size={16} color={C.danger} />
-                  <Text style={styles.errorText}>{error}</Text>
-                </View>
-              )}
-
-              {/* ── Full Name ── */}
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>Full Name</Text>
-                <View style={inputStyle('name')}>
-                  <Ionicons
-                    name="person-outline"
-                    size={18}
-                    color={iconColor('name')}
-                    style={styles.inputIcon}
-                  />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Edwin Ocaya"
-                    placeholderTextColor={C.textSecondary}
-                    value={fullName}
-                    onChangeText={text => { setFullName(text); if (error) setError(''); }}
-                    onFocus={() => setFocusedField('name')}
-                    onBlur={() => setFocusedField(null)}
-                    autoCapitalize="words"
-                    autoCorrect={false}
-                    returnKeyType="next"
-                    onSubmitEditing={() => phoneRef.current?.focus()}
-                    blurOnSubmit={false}
-                    editable={!loading}
-                    testID="input-fullname"
-                  />
-                </View>
-              </View>
-
-              {/* ── Phone Number ── */}
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>Phone Number</Text>
-                <View style={inputStyle('phone')}>
-                  <Ionicons
-                    name="call-outline"
-                    size={18}
-                    color={iconColor('phone')}
-                    style={styles.inputIcon}
-                  />
-                  <TextInput
-                    ref={phoneRef}
-                    style={styles.input}
-                    placeholder="+256 700 000 000"
-                    placeholderTextColor={C.textSecondary}
-                    value={phoneNumber}
-                    onChangeText={text => { setPhoneNumber(text); if (error) setError(''); }}
-                    onFocus={() => setFocusedField('phone')}
-                    onBlur={() => setFocusedField(null)}
-                    keyboardType="phone-pad"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    returnKeyType="next"
-                    onSubmitEditing={() => emailRef.current?.focus()}
-                    blurOnSubmit={false}
-                    editable={!loading}
-                    testID="input-phone"
-                  />
-                </View>
-              </View>
-
-              {/* ── Email (optional) ── */}
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>
-                  Email Address{' '}
-                  <Text style={styles.optionalTag}>(optional)</Text>
-                </Text>
-                <View style={inputStyle('email')}>
-                  <Ionicons
-                    name="mail-outline"
-                    size={18}
-                    color={iconColor('email')}
-                    style={styles.inputIcon}
-                  />
-                  <TextInput
-                    ref={emailRef}
-                    style={styles.input}
-                    placeholder="you@example.com"
-                    placeholderTextColor={C.textSecondary}
-                    value={email}
-                    onChangeText={text => { setEmail(text); if (error) setError(''); }}
-                    onFocus={() => setFocusedField('email')}
-                    onBlur={() => setFocusedField(null)}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    returnKeyType="next"
-                    onSubmitEditing={() => passwordRef.current?.focus()}
-                    blurOnSubmit={false}
-                    editable={!loading}
-                    testID="input-email"
-                  />
-                </View>
-              </View>
-
-              {/* ── Password ── */}
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>Password</Text>
-                <View style={inputStyle('password')}>
-                  <Ionicons
-                    name="lock-closed-outline"
-                    size={18}
-                    color={iconColor('password')}
-                    style={styles.inputIcon}
-                  />
-                  <TextInput
-                    ref={passwordRef}
-                    style={[styles.input, { flex: 1 }]}
-                    placeholder="Min. 8 characters"
-                    placeholderTextColor={C.textSecondary}
-                    value={password}
-                    onChangeText={text => { setPassword(text); if (error) setError(''); }}
-                    onFocus={() => setFocusedField('password')}
-                    onBlur={() => setFocusedField(null)}
-                    secureTextEntry={!showPassword}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    returnKeyType="done"
-                    onSubmitEditing={handleRegister}
-                    editable={!loading}
-                    testID="input-password"
-                  />
-                  <TouchableOpacity
-                    onPress={() => setShowPassword(v => !v)}
-                    style={styles.eyeBtn}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons
-                      name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                      size={18}
-                      color={C.textSecondary}
-                    />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* ── Role Selector ── */}
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>Role</Text>
-                <View style={styles.roleRow}>
-                  {ROLES.map(({ value, label, icon }) => {
-                    const isActive = role === value;
-                    return (
-                      <TouchableOpacity
-                        key={value}
-                        style={[
-                          styles.roleBtn,
-                          isActive && styles.roleBtnActive,
-                        ]}
-                        onPress={() => setRole(value)}
-                        disabled={loading}
-                        activeOpacity={0.8}
-                        testID={`role-${value}`}
-                      >
-                        <Ionicons
-                          name={icon}
-                          size={18}
-                          color={isActive ? '#000' : C.textSecondary}
-                          style={{ marginBottom: 2 }}
-                        />
-                        <Text style={[
-                          styles.roleBtnText,
-                          isActive && styles.roleBtnTextActive,
-                        ]}>
-                          {label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-
-              {/* ── Submit Button ── */}
-              <TouchableOpacity
-                onPress={handleRegister}
-                disabled={loading}
-                activeOpacity={0.85}
-                style={styles.btnContainer}
-                testID="btn-register"
-              >
+              {/* ── Header / Branding ── */}
+              <View style={styles.header}>
                 <LinearGradient
-                  colors={loading ? ['#1E3A2F', '#1E3A2F'] : [C.primary, C.primaryDark]}
-                  style={styles.btn}
+                  colors={[C.primary + '33', C.accent + '1A']}
+                  style={styles.logoRing}
                   start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
+                  end={{ x: 1, y: 1 }}
                 >
-                  {loading ? (
-                    <View style={styles.btnInner}>
-                      <ActivityIndicator size="small" color={C.primary} />
-                      <Text style={[styles.btnText, { color: C.primary, marginLeft: 8 }]}>
-                        Creating Account…
-                      </Text>
-                    </View>
-                  ) : (
-                    <View style={styles.btnInner}>
-                      <Text style={styles.btnText}>Register</Text>
-                      <Ionicons name="checkmark" size={18} color="#000" style={{ marginLeft: 6 }} />
-                    </View>
-                  )}
+                  <Ionicons name="person-add" size={32} color={C.primary} />
                 </LinearGradient>
-              </TouchableOpacity>
-            </View>
 
-            {/* ── Footer ── */}
-            <View style={styles.footer}>
-              <TouchableOpacity
-                onPress={() => {
-                  Keyboard.dismiss();
-                  navigation.navigate('Login');
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.signInLink}>
-                  Already have an account?{' '}
-                  <Text style={{ color: C.primary, fontWeight: '700' }}>Sign In</Text>
+                <Text style={styles.appName}>Create Account</Text>
+                <Text style={styles.tagline}>Smart-Stua Monitoring Network</Text>
+              </View>
+
+              {/* ── Card ── */}
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Register</Text>
+                <Text style={styles.cardSubtitle}>
+                  Join the Smart-Stua platform to monitor your grain storage
                 </Text>
-              </TouchableOpacity>
-            </View>
 
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+                {/* ── Error Banner ── */}
+                {!!error && (
+                  <View style={styles.errorBanner}>
+                    <Ionicons name="alert-circle" size={16} color={C.danger} />
+                    <Text style={styles.errorText}>{error}</Text>
+                  </View>
+                )}
+
+                {/* ── Full Name ── */}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>Full Name</Text>
+                  <View style={inputStyle('name')}>
+                    <Ionicons name="person-outline" size={18} color={iconColor('name')} style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Edwin Ocaya"
+                      placeholderTextColor={C.textSecondary}
+                      value={fullName}
+                      onChangeText={text => { setFullName(text); if (error) setError(''); }}
+                      onFocus={() => setFocusedField('name')}
+                      onBlur={() => setFocusedField(null)}
+                      autoCapitalize="words"
+                      autoCorrect={false}
+                      returnKeyType="next"
+                      onSubmitEditing={() => phoneRef.current?.focus()}
+                      blurOnSubmit={false}
+                      editable={!loading}
+                      testID="input-fullname"
+                    />
+                  </View>
+                </View>
+
+                {/* ── Phone Number ── */}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>Phone Number</Text>
+                  <View style={inputStyle('phone')}>
+                    <Ionicons name="call-outline" size={18} color={iconColor('phone')} style={styles.inputIcon} />
+                    <TextInput
+                      ref={phoneRef}
+                      style={styles.input}
+                      placeholder="+256 700 000 000"
+                      placeholderTextColor={C.textSecondary}
+                      value={phoneNumber}
+                      onChangeText={text => { setPhoneNumber(text); if (error) setError(''); }}
+                      onFocus={() => setFocusedField('phone')}
+                      onBlur={() => setFocusedField(null)}
+                      keyboardType="phone-pad"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      returnKeyType="next"
+                      onSubmitEditing={() => emailRef.current?.focus()}
+                      blurOnSubmit={false}
+                      editable={!loading}
+                      testID="input-phone"
+                    />
+                  </View>
+                </View>
+
+                {/* ── Email (optional) ── */}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>
+                    Email Address{' '}
+                    <Text style={styles.optionalTag}>(optional)</Text>
+                  </Text>
+                  <View style={inputStyle('email')}>
+                    <Ionicons name="mail-outline" size={18} color={iconColor('email')} style={styles.inputIcon} />
+                    <TextInput
+                      ref={emailRef}
+                      style={styles.input}
+                      placeholder="you@example.com"
+                      placeholderTextColor={C.textSecondary}
+                      value={email}
+                      onChangeText={text => { setEmail(text); if (error) setError(''); }}
+                      onFocus={() => setFocusedField('email')}
+                      onBlur={() => setFocusedField(null)}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      returnKeyType="next"
+                      onSubmitEditing={() => passwordRef.current?.focus()}
+                      blurOnSubmit={false}
+                      editable={!loading}
+                      testID="input-email"
+                    />
+                  </View>
+                </View>
+
+                {/* ── Password ── */}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>Password</Text>
+                  <View style={inputStyle('password')}>
+                    <Ionicons name="lock-closed-outline" size={18} color={iconColor('password')} style={styles.inputIcon} />
+                    <TextInput
+                      ref={passwordRef}
+                      style={[styles.input, { flex: 1 }]}
+                      placeholder="Min. 8 characters"
+                      placeholderTextColor={C.textSecondary}
+                      value={password}
+                      onChangeText={text => { setPassword(text); if (error) setError(''); }}
+                      onFocus={() => setFocusedField('password')}
+                      onBlur={() => setFocusedField(null)}
+                      secureTextEntry={!showPassword}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      returnKeyType="done"
+                      onSubmitEditing={handleRegister}
+                      editable={!loading}
+                      testID="input-password"
+                    />
+                    <TouchableOpacity
+                      onPress={() => setShowPassword(v => !v)}
+                      style={styles.eyeBtn}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color={C.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* ── Role Selector ── */}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>Role</Text>
+                  <View style={styles.roleRow}>
+                    {ROLES.map(({ value, label, icon }) => {
+                      const isActive = role === value;
+                      return (
+                        <TouchableOpacity
+                          key={value}
+                          style={[styles.roleBtn, isActive && styles.roleBtnActive]}
+                          onPress={() => setRole(value)}
+                          disabled={loading}
+                          activeOpacity={0.8}
+                          testID={`role-${value}`}
+                        >
+                          <Ionicons name={icon} size={18} color={isActive ? '#000' : C.textSecondary} style={{ marginBottom: 2 }} />
+                          <Text style={[styles.roleBtnText, isActive && styles.roleBtnTextActive]}>{label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {/* ── Submit Button ── */}
+                <TouchableOpacity onPress={handleRegister} disabled={loading} activeOpacity={0.85} style={styles.btnContainer} testID="btn-register">
+                  <LinearGradient colors={loading ? ['#1E3A2F', '#1E3A2F'] : [C.primary, C.primaryDark]} style={styles.btn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+                    {loading ? (
+                      <View style={styles.btnInner}>
+                        <ActivityIndicator size="small" color={C.primary} />
+                        <Text style={[styles.btnText, { color: C.primary, marginLeft: 8 }]}>Creating Account…</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.btnInner}>
+                        <Text style={styles.btnText}>Register</Text>
+                        <Ionicons name="checkmark" size={18} color="#000" style={{ marginLeft: 6 }} />
+                      </View>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+
+              {/* ── Footer ── */}
+              <View style={styles.footer}>
+                <TouchableOpacity onPress={() => { Keyboard.dismiss(); navigation.navigate('Login'); }} activeOpacity={0.7}>
+                  <Text style={styles.signInLink}>
+                    Already have an account?{' '}
+                    <Text style={{ color: C.primary, fontWeight: '700' }}>Sign In</Text>
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      ) : (
+        <View style={{ flex: 1 }}>
+          <ScrollView
+            contentContainerStyle={styles.scrollAndroid}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+            overScrollMode="never"
+          >
+            <View style={styles.innerContainer}>
+
+              {/* ── Header / Branding ── */}
+              <View style={styles.header}>
+                <LinearGradient
+                  colors={[C.primary + '33', C.accent + '1A']}
+                  style={styles.logoRing}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <Ionicons name="person-add" size={32} color={C.primary} />
+                </LinearGradient>
+
+                <Text style={styles.appName}>Create Account</Text>
+                <Text style={styles.tagline}>Smart-Stua Monitoring Network</Text>
+              </View>
+
+              {/* ── Card ── */}
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Register</Text>
+                <Text style={styles.cardSubtitle}>
+                  Join the Smart-Stua platform to monitor your grain storage
+                </Text>
+
+                {/* ── Error Banner ── */}
+                {!!error && (
+                  <View style={styles.errorBanner}>
+                    <Ionicons name="alert-circle" size={16} color={C.danger} />
+                    <Text style={styles.errorText}>{error}</Text>
+                  </View>
+                )}
+
+                {/* ── Full Name ── */}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>Full Name</Text>
+                  <View style={inputStyle('name')}>
+                    <Ionicons name="person-outline" size={18} color={iconColor('name')} style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Edwin Ocaya"
+                      placeholderTextColor={C.textSecondary}
+                      value={fullName}
+                      onChangeText={text => { setFullName(text); if (error) setError(''); }}
+                      onFocus={() => setFocusedField('name')}
+                      onBlur={() => setFocusedField(null)}
+                      autoCapitalize="words"
+                      autoCorrect={false}
+                      returnKeyType="next"
+                      onSubmitEditing={() => phoneRef.current?.focus()}
+                      blurOnSubmit={false}
+                      editable={!loading}
+                      testID="input-fullname"
+                    />
+                  </View>
+                </View>
+
+                {/* ── Phone Number ── */}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>Phone Number</Text>
+                  <View style={inputStyle('phone')}>
+                    <Ionicons name="call-outline" size={18} color={iconColor('phone')} style={styles.inputIcon} />
+                    <TextInput
+                      ref={phoneRef}
+                      style={styles.input}
+                      placeholder="+256 700 000 000"
+                      placeholderTextColor={C.textSecondary}
+                      value={phoneNumber}
+                      onChangeText={text => { setPhoneNumber(text); if (error) setError(''); }}
+                      onFocus={() => setFocusedField('phone')}
+                      onBlur={() => setFocusedField(null)}
+                      keyboardType="phone-pad"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      returnKeyType="next"
+                      onSubmitEditing={() => emailRef.current?.focus()}
+                      blurOnSubmit={false}
+                      editable={!loading}
+                      testID="input-phone"
+                    />
+                  </View>
+                </View>
+
+                {/* ── Email (optional) ── */}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>
+                    Email Address{' '}
+                    <Text style={styles.optionalTag}>(optional)</Text>
+                  </Text>
+                  <View style={inputStyle('email')}>
+                    <Ionicons name="mail-outline" size={18} color={iconColor('email')} style={styles.inputIcon} />
+                    <TextInput
+                      ref={emailRef}
+                      style={styles.input}
+                      placeholder="you@example.com"
+                      placeholderTextColor={C.textSecondary}
+                      value={email}
+                      onChangeText={text => { setEmail(text); if (error) setError(''); }}
+                      onFocus={() => setFocusedField('email')}
+                      onBlur={() => setFocusedField(null)}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      returnKeyType="next"
+                      onSubmitEditing={() => passwordRef.current?.focus()}
+                      blurOnSubmit={false}
+                      editable={!loading}
+                      testID="input-email"
+                    />
+                  </View>
+                </View>
+
+                {/* ── Password ── */}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>Password</Text>
+                  <View style={inputStyle('password')}>
+                    <Ionicons name="lock-closed-outline" size={18} color={iconColor('password')} style={styles.inputIcon} />
+                    <TextInput
+                      ref={passwordRef}
+                      style={[styles.input, { flex: 1 }]}
+                      placeholder="Min. 8 characters"
+                      placeholderTextColor={C.textSecondary}
+                      value={password}
+                      onChangeText={text => { setPassword(text); if (error) setError(''); }}
+                      onFocus={() => setFocusedField('password')}
+                      onBlur={() => setFocusedField(null)}
+                      secureTextEntry={!showPassword}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      returnKeyType="done"
+                      onSubmitEditing={handleRegister}
+                      editable={!loading}
+                      testID="input-password"
+                    />
+                    <TouchableOpacity
+                      onPress={() => setShowPassword(v => !v)}
+                      style={styles.eyeBtn}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color={C.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* ── Role Selector ── */}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>Role</Text>
+                  <View style={styles.roleRow}>
+                    {ROLES.map(({ value, label, icon }) => {
+                      const isActive = role === value;
+                      return (
+                        <TouchableOpacity
+                          key={value}
+                          style={[styles.roleBtn, isActive && styles.roleBtnActive]}
+                          onPress={() => setRole(value)}
+                          disabled={loading}
+                          activeOpacity={0.8}
+                          testID={`role-${value}`}
+                        >
+                          <Ionicons name={icon} size={18} color={isActive ? '#000' : C.textSecondary} style={{ marginBottom: 2 }} />
+                          <Text style={[styles.roleBtnText, isActive && styles.roleBtnTextActive]}>{label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {/* ── Submit Button ── */}
+                <TouchableOpacity onPress={handleRegister} disabled={loading} activeOpacity={0.85} style={styles.btnContainer} testID="btn-register">
+                  <LinearGradient colors={loading ? ['#1E3A2F', '#1E3A2F'] : [C.primary, C.primaryDark]} style={styles.btn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+                    {loading ? (
+                      <View style={styles.btnInner}>
+                        <ActivityIndicator size="small" color={C.primary} />
+                        <Text style={[styles.btnText, { color: C.primary, marginLeft: 8 }]}>Creating Account…</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.btnInner}>
+                        <Text style={styles.btnText}>Register</Text>
+                        <Ionicons name="checkmark" size={18} color="#000" style={{ marginLeft: 6 }} />
+                      </View>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+
+              {/* ── Footer ── */}
+              <View style={styles.footer}>
+                <TouchableOpacity onPress={() => { Keyboard.dismiss(); navigation.navigate('Login'); }} activeOpacity={0.7}>
+                  <Text style={styles.signInLink}>
+                    Already have an account?{' '}
+                    <Text style={{ color: C.primary, fontWeight: '700' }}>Sign In</Text>
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+            </View>
+          </ScrollView>
+        </View>
+      )}
     </View>
   );
 }
