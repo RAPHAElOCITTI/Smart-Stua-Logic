@@ -1,6 +1,6 @@
 /**
  * TrendChart Component
- * Historical line chart showing Temperature, Humidity, and ARI trends
+ * Historical line chart showing Temperature, Humidity, and Moisture trends
  * over the past 7 days using react-native-chart-kit.
  */
 
@@ -52,8 +52,13 @@ export default function TrendChart({ readings }) {
         color:       (opacity = 1) => `rgba(10, 132, 255, ${opacity})`,
         strokeWidth: 2,
       },
+      {
+        data:        dataPoints.map(r => r.moisture_pct ?? 0),
+        color:       (opacity = 1) => `rgba(0, 210, 106, ${opacity})`,
+        strokeWidth: 2,
+      },
     ],
-    legend: ['Temperature (°C)', 'Humidity (%)'],
+    legend: ['Temperature (°C)', 'Humidity (%)', 'Moisture (%)'],
   };
 
   const chartConfig = {
@@ -96,6 +101,10 @@ export default function TrendChart({ readings }) {
           <View style={[styles.legendDot, { backgroundColor: '#0A84FF' }]} />
           <Text style={styles.legendText}>Humidity (%)</Text>
         </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: '#00D26A' }]} />
+          <Text style={styles.legendText}>Moisture (%)</Text>
+        </View>
       </View>
 
       {/* Stats summary */}
@@ -109,6 +118,11 @@ export default function TrendChart({ readings }) {
           label="Avg Humidity"
           value={avg(dataPoints.map(r => r.humidity_pct)).toFixed(1) + '%'}
           color="#0A84FF"
+        />
+        <StatBadge
+          label="Avg Moisture"
+          value={avg(dataPoints.map(r => r.moisture_pct ?? 0)).toFixed(1) + '%'}
+          color="#00D26A"
         />
         <StatBadge
           label="Data Points"

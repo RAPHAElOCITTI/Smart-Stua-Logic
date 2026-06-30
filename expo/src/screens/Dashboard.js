@@ -92,6 +92,13 @@ export default function DashboardScreen() {
     return () => clearInterval(interval);
   }, [selectedIndex, fetchData]);
 
+  // Automatic Dryer Trigger on Safe Threshold Breach (Option B)
+  useEffect(() => {
+    if (selectedNode && selectedNode.ari_value >= 70 && !selectedNode.dryer_active && !dryerLoading) {
+      handleDryerToggle();
+    }
+  }, [selectedNode, dryerLoading]);
+
   const onRefresh = () => {
     setRefreshing(true);
     fetchData();
